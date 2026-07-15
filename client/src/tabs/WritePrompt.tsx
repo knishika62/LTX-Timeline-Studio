@@ -187,6 +187,7 @@ export default function WritePrompt() {
                 value={keywords}
                 onChange={(e) => setKeywords(e.target.value)}
                 placeholder="e.g. walking home from a summer festival, playing with a cat, yukata"
+                style={{ fontSize }}
               />
             </label>
             <div className="row">
