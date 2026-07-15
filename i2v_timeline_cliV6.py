@@ -38,6 +38,7 @@ from timeline_common import (
     _fmt_elapsed,
     _fmt_duration,
     _parse_prompt, _parse_numbered_lines, _seg_video_path, _concat_segments, _run_upscale,
+    _split_direct_prompt, _write_direct_prompts_txt,
     _auto_segment_narrative, _LINT_MAX_ATTEMPTS,
     _has_word, _animals_in, _stem, _ANIMAL_ABSENT_RE,
     _ANIMAL_BEHIND_RE, _ANIMAL_BEHIND_LOOSE_RE, _enforce_animal_beside,
@@ -1152,6 +1153,58 @@ async def _generate_i2v_video(prompt: str, kf_server_name: str, width: int, heig
     return await generate_t2v_video(prompt, width, height, duration_s, keyframe_server_filename=kf_server_name)
 
 
+async def _run_direct(args: argparse.Namespace) -> None:
+    """デバッグ用: LLMパイプライン(Pass0〜4)を一切通さず、--fのファイル内容を
+    そのままComfyUIに渡してargs.direct秒の動画を1本だけ生成する(2026-07-15新設)。
+    ファイルに`--- Keyframe prompt ---`区切りがあればKeyframe/Motionを分けて使い、
+    無ければ全文を両方に使う。prompts.txt(1セグメント、direct: trueヘッダー)を
+    通常runと同じ命名規則で書き出すため、Node.jsハーネス側は無改修でこのrunを
+    表示・操作できる。"""
+    prompt_path = Path(args.f)
+    if not prompt_path.exists():
+        print(f"[i2v-tl6] ファイルが見つかりません: {prompt_path}")
+        return
+
+    width, height = (720, 1280) if args.vertical else (1280, 720)
+    orient_label = "縦 720×1280" if args.vertical else "横 1280×720"
+    orientation = "vertical" if args.vertical else "horizontal"
+    duration = args.direct
+
+    text = prompt_path.read_text(encoding="utf-8")
+    kf_prompt, motion_prompt = _split_direct_prompt(text)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    prompts_txt = cfg.GENERATED_DIR / f"i2v6_{ts}_prompts.txt"
+    _write_direct_prompts_txt(prompts_txt, prompt_path, orientation, width, height, duration,
+                               motion_prompt, keyframe_prompt=kf_prompt)
+
+    print(f"[i2v-tl6] [DIRECT] {prompt_path.name} / {orient_label} / {duration}s(LLM無し、生テキストをそのまま使用)")
+    print(f"[i2v-tl6] プロンプト保存: {prompts_txt.name}")
+    print(f"[i2v-tl6] keyframe prompt:\n{kf_prompt}")
+    print(f"[i2v-tl6] motion prompt:\n{motion_prompt}")
+
+    kf_path = cfg.GENERATED_DIR / f"i2v6_{ts}_seg01_kf.png"
+    kf_width, kf_height = _keyframe_size(width, height)
+    print(f"\n[i2v-tl6] キーフレーム生成中...")
+    kf_raw = await generate_image(
+        kf_prompt, kf_width, kf_height, seed=None,
+        lora_name=cfg.KEYFRAME_LORA_NAME, lora_strength=cfg.KEYFRAME_LORA_STRENGTH)
+    kf_raw.rename(kf_path)
+    print(f"[i2v-tl6] キーフレーム保存: {kf_path.name} → アップロード中...")
+    kf_server_name = await upload_image_to_comfyui(kf_path)
+
+    seg_path = _seg_video_path(ts, 1, "direct", "i2v6")
+    print(f"[i2v-tl6] 動画生成中(I2V)...")
+    raw_path = await _generate_i2v_video(motion_prompt, kf_server_name, width, height, duration, bypass_likeness=args.norefine)
+    raw_path.rename(seg_path)
+    print(f"[i2v-tl6] 保存: {seg_path.name}")
+
+    final = cfg.GENERATED_DIR / f"i2v6_{ts}_final.mp4"
+    if _concat_segments([seg_path], final, "[i2v-tl6]"):
+        print(f"\n[i2v-tl6] 完了!")
+        print(f"[i2v-tl6] 最終動画: {final}")
+
+
 async def _run_retry(args: argparse.Namespace) -> None:
     """既存runの指定セグメントだけ別seedで再生成し、finalを再連結する。"""
     run_id = args.retry
@@ -1168,6 +1221,20 @@ async def _run_retry(args: argparse.Namespace) -> None:
         header, segments = _parse_prompts_txt(prompts_path)
     except ValueError as e:
         print(f"[i2v-tl6] パースエラー: {e}")
+        return
+
+    # directモード(--directで作ったrun)は常にセグメント1つのみなので、--seg省略時は
+    # 自動的に"1"を補う(2026-07-15新設)。通常runは従来通り--seg必須のまま。
+    is_direct = header.get("direct") == "true"
+    if not args.seg:
+        if is_direct:
+            args.seg = "1"
+            print(f"[i2v-tl6] directモードのrun: --seg省略 → seg 1 を使用")
+        else:
+            print(f"[i2v-tl6] --retry には --seg が必要です(例: --seg 3,7)")
+            return
+    elif is_direct and args.seg.strip() != "1":
+        print(f"[i2v-tl6] directモードのrunはセグメント1のみです(--seg {args.seg} は無効)")
         return
 
     # サイズ復元: --h/--vが明示指定されていればそちらを優先し、無指定ならヘッダーへ
@@ -1399,20 +1466,38 @@ async def main() -> None:
     orient.add_argument("--v", action="store_true", dest="vertical",   help="縦向き 720×1280")
     parser.add_argument("--f", metavar="FILE.txt", help="プロンプトファイル(通常実行時必須)")
     parser.add_argument("--debug", action="store_true", help="プロンプト生成のみ、動画生成をスキップ")
-    parser.add_argument("--retry", metavar="RUN_ID", help="既存runのセグメントを再生成(例: --retry 20260704_080510)。--seg 必須、--f とは排他")
+    parser.add_argument("--retry", metavar="RUN_ID", help="既存runのセグメントを再生成(例: --retry 20260704_080510)。--seg 必須(directモードのrunは省略可)、--f とは排他")
     parser.add_argument("--seg", metavar="N[,N...]", help="--retry で再生成するセグメント番号(1始まり、カンマ区切り)")
     parser.add_argument("--norefine", action="store_true",
                          help="I2V_VIDEO_ENGINE=refine時、LTX Likeness Anchorを全セグメントでbypassする"
-                              "(顔が手/物で隠れるセグメントで画像が破綻する対策)。--f・--retry --seg どちらでも使える")
+                              "(顔が手/物で隠れるセグメントで画像が破綻する対策)。--f・--retry --seg・--direct どれでも使える")
     parser.add_argument("--keep", action="store_true",
                          help="--retry --seg 専用。既存のキーフレーム画像をそのまま使い、動画生成だけをやり直す"
                               "(キーフレームは問題なく動画側だけ壊れた場合に、新seedでのキーフレーム再生成を省く)")
+    parser.add_argument("--direct", metavar="SECONDS", type=float,
+                         help="デバッグ用: Pass0〜4のLLMパイプラインを一切通さず、--fのファイル内容を"
+                              "そのままComfyUIに渡してSECONDS秒の動画を1本だけ生成する。"
+                              "ファイルに'--- Keyframe prompt ---'区切りがあればKeyframe/Motionを分離、無ければ全文を両方に使う。"
+                              "--retry / --seg / --upscale / --debug とは排他。--keepは新規生成のため無効(指定時は警告のうえ無視)")
     parser.add_argument("--upscale", metavar="RUN_ID", nargs="?", const="",
                          help="既存runの最終動画(_final.mp4)をRTX Video Super ResolutionでフルHDにアップスケール。"
                               "RUN_ID省略で直近run(例: --upscale / --upscale 20260704_080510)。他の引数とは排他")
     args = parser.parse_args()
 
-    if args.keep and not args.seg:
+    if args.direct is not None:
+        if args.retry or args.seg or args.upscale is not None or args.debug:
+            parser.error("--direct は --retry / --seg / --upscale / --debug と同時に指定できません")
+        if not args.f:
+            parser.error("--direct には --f が必要です")
+        if args.keep:
+            print(f"[i2v-tl6] 警告: --keep は新規の--direct生成では無効です(既存キーフレームが無いため無視)")
+        if args.norefine and cfg.I2V_VIDEO_ENGINE != "refine":
+            print(f"[i2v-tl6] 警告: --norefine が指定されましたが I2V_VIDEO_ENGINE={cfg.I2V_VIDEO_ENGINE!r} のため無視されます(refine時のみ有効)")
+        await _run_direct(args)
+        print(f"[i2v-tl6] 経過時間: {_fmt_elapsed(start_time)}\n")
+        return
+
+    if args.keep and not args.seg and not args.retry:
         parser.error("--keep は --seg と併用してください(--retry --seg --keep、または --seg --keep で直近run)")
 
     if args.upscale is not None:
@@ -1434,8 +1519,8 @@ async def main() -> None:
     if args.retry:
         if args.f:
             parser.error("--retry と --f は同時に指定できません")
-        if not args.seg:
-            parser.error("--retry には --seg が必要です(例: --seg 3,7)")
+        # --seg必須チェックはここでは行わない(directモードのrunは省略可のため)。
+        # _run_retry()がprompts.txtヘッダーを読んでから判定する。
         await _run_retry(args)
         print(f"[i2v-tl6] 経過時間: {_fmt_elapsed(start_time)}\n")
         return

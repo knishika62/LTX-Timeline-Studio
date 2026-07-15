@@ -268,6 +268,45 @@ def _seg_video_path(run_id: str, num: int, label: str, prefix: str) -> Path:
     return cfg.GENERATED_DIR / f"{prefix}_{run_id}_seg{num:02d}_{label}.mp4"
 
 
+def _split_direct_prompt(text: str) -> tuple[str, str]:
+    """--directモード用: ファイルに`--- Keyframe prompt ---`区切りがあれば
+    (keyframe_prompt, motion_prompt)に分割し、無ければ全文を両方に使う
+    (i2vのみ意味を持つ。t2vは返り値の2要素目だけ使う)。既存prompts.txtの
+    `--- Keyframe prompt ---`/`--- LTX prompt ---`表記をそのまま流用し、
+    パース用の新しい正規表現は増やさない。"""
+    m = re.search(r"---\s*Keyframe prompt\s*---\s*\n(.*?)\n---\s*LTX prompt\s*---\s*\n(.*)", text, re.DOTALL)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+    whole = text.strip()
+    return whole, whole
+
+
+def _write_direct_prompts_txt(
+    prompts_txt: Path, prompt_path: Path, orientation: str, width: int, height: int,
+    duration: float, main_prompt: str, keyframe_prompt: str | None = None,
+) -> None:
+    """--directモード用: LLMパイプラインを経由しないため、通常のprompts.txtより
+    ヘッダー・本文とも簡素だが、既存の`_parse_prompts_txt`(t2v/i2v各CLI)・
+    Node.jsハーネスの`_PROMPTS_SEG_HEADER_RE`が読める形式は完全に維持する
+    (`[1/1] direct (Ns)` + `--- LTX prompt ---`はそのまま既存正規表現に一致)。
+    `direct: true`ヘッダーは--retry時に--segを省略可能にするための目印。"""
+    lines = [
+        f"source: {prompt_path.name}",
+        f"orientation: {orientation}",
+        f"size: {width}x{height}",
+        f"auto_segmented: false",
+        f"direct: true",
+        "",
+        f"[1/1] direct ({int(duration)}s)",
+        "Intent: (direct mode — raw passthrough, no LLM)",
+        "Camera: (n/a)",
+    ]
+    if keyframe_prompt is not None:
+        lines.append(f"--- Keyframe prompt ---\n{keyframe_prompt}")
+    lines.append(f"--- LTX prompt ---\n{main_prompt}\n")
+    prompts_txt.write_text("\n".join(lines), encoding="utf-8")
+
+
 async def _run_upscale(prefix: str, run_id: str | None, log_prefix: str) -> None:
     """既存runの最終動画(`{prefix}_{run_id}_final.mp4`)をRTX Video Super Resolutionで
     フルHD相当にアップスケールする(2026-07-08、`--retry`と同じ「id指定 or 省略で直近run」

@@ -31,6 +31,7 @@ from timeline_common import (
     _fmt_elapsed,
     _fmt_duration,
     _parse_prompt, _parse_numbered_lines, _seg_video_path, _concat_segments, _run_upscale,
+    _split_direct_prompt, _write_direct_prompts_txt,
     _auto_segment_narrative, _LINT_MAX_ATTEMPTS,
     _has_word, _animals_in, _stem, _ANIMAL_ABSENT_RE,
     _ANIMAL_BEHIND_RE, _ANIMAL_BEHIND_LOOSE_RE, _enforce_animal_beside,
@@ -849,6 +850,44 @@ def _enforce_animal_first(ltx_prompt: str, action: str) -> str:
     return insert + " " + ltx_prompt
 
 
+async def _run_direct(args: argparse.Namespace) -> None:
+    """デバッグ用: LLMパイプライン(Pass0〜4)を一切通さず、--fのファイル内容を
+    そのままComfyUIに渡してargs.direct秒の動画を1本だけ生成する(2026-07-15新設)。
+    prompts.txt(1セグメント、direct: trueヘッダー)を通常runと同じ命名規則で
+    書き出すため、Node.jsハーネス側は無改修でこのrunを表示・操作できる。"""
+    prompt_path = Path(args.f)
+    if not prompt_path.exists():
+        print(f"[t2v-tl6] ファイルが見つかりません: {prompt_path}")
+        return
+
+    width, height = (720, 1280) if args.vertical else (1280, 720)
+    orient_label = "縦 720×1280" if args.vertical else "横 1280×720"
+    orientation = "vertical" if args.vertical else "horizontal"
+    duration = args.direct
+
+    text = prompt_path.read_text(encoding="utf-8")
+    _, main_prompt = _split_direct_prompt(text)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    prompts_txt = cfg.GENERATED_DIR / f"t2v6_{ts}_prompts.txt"
+    _write_direct_prompts_txt(prompts_txt, prompt_path, orientation, width, height, duration, main_prompt)
+
+    print(f"[t2v-tl6] [DIRECT] {prompt_path.name} / {orient_label} / {duration}s(LLM無し、生テキストをそのまま使用)")
+    print(f"[t2v-tl6] プロンプト保存: {prompts_txt.name}")
+    print(f"[t2v-tl6] prompt:\n{main_prompt}")
+
+    seg_path = _seg_video_path(ts, 1, "direct", "t2v6")
+    print(f"\n[t2v-tl6] 動画生成中...")
+    raw_path = await generate_t2v_video(main_prompt, width, height, duration)
+    raw_path.rename(seg_path)
+    print(f"[t2v-tl6] 保存: {seg_path.name}")
+
+    final = cfg.GENERATED_DIR / f"t2v6_{ts}_final.mp4"
+    if _concat_segments([seg_path], final, "[t2v-tl6]"):
+        print(f"\n[t2v-tl6] 完了!")
+        print(f"[t2v-tl6] 最終動画: {final}")
+
+
 async def _run_retry(args: argparse.Namespace) -> None:
     """既存runの指定セグメントだけ別seedで再生成し、finalを再連結する。"""
     run_id = args.retry
@@ -865,6 +904,20 @@ async def _run_retry(args: argparse.Namespace) -> None:
         header, segments = _parse_prompts_txt(prompts_path)
     except ValueError as e:
         print(f"[t2v-tl6] パースエラー: {e}")
+        return
+
+    # directモード(--directで作ったrun)は常にセグメント1つのみなので、--seg省略時は
+    # 自動的に"1"を補う(2026-07-15新設)。通常runは従来通り--seg必須のまま。
+    is_direct = header.get("direct") == "true"
+    if not args.seg:
+        if is_direct:
+            args.seg = "1"
+            print(f"[t2v-tl6] directモードのrun: --seg省略 → seg 1 を使用")
+        else:
+            print(f"[t2v-tl6] --retry には --seg が必要です(例: --seg 3,7)")
+            return
+    elif is_direct and args.seg.strip() != "1":
+        print(f"[t2v-tl6] directモードのrunはセグメント1のみです(--seg {args.seg} は無効)")
         return
 
     # サイズ復元: --h/--vが明示指定されていればそちらを優先し、無指定ならヘッダーへ
@@ -1016,12 +1069,25 @@ async def main() -> None:
     orient.add_argument("--v", action="store_true", dest="vertical",   help="縦向き 720×1280")
     parser.add_argument("--f", metavar="FILE.txt", help="プロンプトファイル(通常実行時必須)")
     parser.add_argument("--debug", action="store_true", help="プロンプト生成のみ、動画生成をスキップ")
-    parser.add_argument("--retry", metavar="RUN_ID", help="既存runのセグメントを再生成(例: --retry 20260704_080510)。--seg 必須、--f とは排他")
+    parser.add_argument("--retry", metavar="RUN_ID", help="既存runのセグメントを再生成(例: --retry 20260704_080510)。--seg 必須(directモードのrunは省略可)、--f とは排他")
     parser.add_argument("--seg", metavar="N[,N...]", help="--retry で再生成するセグメント番号(1始まり、カンマ区切り)")
+    parser.add_argument("--direct", metavar="SECONDS", type=float,
+                         help="デバッグ用: Pass0〜4のLLMパイプラインを一切通さず、--fのファイル内容を"
+                              "そのままComfyUIに渡してSECONDS秒の動画を1本だけ生成する。"
+                              "--retry / --seg / --upscale / --debug とは排他")
     parser.add_argument("--upscale", metavar="RUN_ID", nargs="?", const="",
                          help="既存runの最終動画(_final.mp4)をRTX Video Super ResolutionでフルHDにアップスケール。"
                               "RUN_ID省略で直近run(例: --upscale / --upscale 20260704_080510)。他の引数とは排他")
     args = parser.parse_args()
+
+    if args.direct is not None:
+        if args.retry or args.seg or args.upscale is not None or args.debug:
+            parser.error("--direct は --retry / --seg / --upscale / --debug と同時に指定できません")
+        if not args.f:
+            parser.error("--direct には --f が必要です")
+        await _run_direct(args)
+        print(f"[t2v-tl6] 経過時間: {_fmt_elapsed(start_time)}\n")
+        return
 
     if args.upscale is not None:
         if args.f or args.retry or args.seg:
@@ -1042,8 +1108,8 @@ async def main() -> None:
     if args.retry:
         if args.f:
             parser.error("--retry と --f は同時に指定できません")
-        if not args.seg:
-            parser.error("--retry には --seg が必要です(例: --seg 3,7)")
+        # --seg必須チェックはここでは行わない(directモードのrunは省略可のため)。
+        # _run_retry()がprompts.txtヘッダーを読んでから判定する。
         await _run_retry(args)
         print(f"[t2v-tl6] 経過時間: {_fmt_elapsed(start_time)}\n")
         return
