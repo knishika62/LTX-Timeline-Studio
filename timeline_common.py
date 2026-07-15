@@ -64,14 +64,19 @@ def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
     """プロンプトを全体・Timelineセグメント・Ambienceに分解する。
 
     Timeline形式(混在可):
-      Format A: "0–2s: description"             (秒・1行)
-      Format B: "00:00–00:03 → description"     (MM:SS・1行・矢印)
-      Format C: "00:00–00:02" 次行以降に説明     (MM:SS・複数行)
+      Format A: "0–2s: description"                  (秒・1行)
+      Format B: "00:00–00:03 → description"          (MM:SS・1行・矢印。矢印/コロンは省略可、
+                 "00:00–00:03 description" のような最も素直な書き方も同じ枝で拾う)
+      Format C: "00:00–00:02" 次行以降に説明          (MM:SS・複数行)
     "Timeline:" ヘッダー行は省略可(最初のタイムスタンプ前を全体とみなす)
     Ambience/Audio セクション名はどちらも可
     """
     _TS_A   = re.compile(r"^(\d+)[–\-](\d+)s:\s*(.+)")
-    _TS_B   = re.compile(r"^(\d{1,2}):(\d{2})[–\-](\d{1,2}):(\d{2})\s*[→>]\s*(.+)")
+    # 矢印(→/>)・コロンは任意。無ければ空白で区切られた説明文をそのまま拾う
+    # ("00:00–00:03 description" — 矢印無しの最も普通な書き方、2026-07-16ユーザー報告)。
+    # 説明文が無い行(Format Cの単独タイムスタンプ)は `(.+)` が1文字以上を要求するため
+    # ここにはマッチせず、下のFormat Cへ正しく流れる
+    _TS_B   = re.compile(r"^(\d{1,2}):(\d{2})[–\-](\d{1,2}):(\d{2})\s*(?:[→>:]\s*)?(.+)")
     _TS_C   = re.compile(r"^(\d{1,2}):(\d{2})[–\-](\d{1,2}):(\d{2})\s*$")
     _TS_D   = re.compile(r"^\[(\d{1,2}):(\d{2})[–\-](\d{1,2}):(\d{2})\]\s*(.+)")   # Format D: "[0:03–0:06] desc"
     _TS_ANY = re.compile(r"^\[?\d{1,2}:\d{2}[–\-]\d{1,2}:\d{2}|^\d+[–\-]\d+s:")
@@ -153,7 +158,7 @@ def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
         i += 1
 
     if not segments:
-        raise ValueError("Timeline セグメントが見つかりません(対応形式: '0–2s: desc' / '00:00–00:02 → desc' / '00:00–00:02\\ndesc')")
+        raise ValueError("Timeline セグメントが見つかりません(対応形式: '0–2s: desc' / '00:00–00:02 desc' / '00:00–00:02 → desc' / '00:00–00:02\\ndesc')")
 
     return global_desc, segments, ambience
 

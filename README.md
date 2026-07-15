@@ -81,7 +81,7 @@ Ambience: [アンビエンス/環境音の説明]
 | 形式 | 例 |
 |---|---|
 | A — 秒・1行 | `0–2s: She walks down the alley` |
-| B — MM:SS・矢印・1行 | `00:00–00:03 → She waves at the camera` |
+| B — MM:SS・1行(矢印/コロンは省略可) | `00:00–00:03 She waves at the camera` / `00:00–00:03 → She waves at the camera` |
 | C — MM:SS単独行 + 次行に説明 | `00:00–00:02`(改行)`She sits on a step tying laces.` |
 | D — ブラケット・1行 | `[0:03–0:06] She crouches to feed a cat` |
 | E — **bold**タイムスタンプ + 次行 | `**00:00–00:02**`(改行)`She sits on a step tying laces.` |
