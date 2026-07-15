@@ -34,5 +34,13 @@ export function mediaHandler(req, res) {
       "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
       "Cache-Control": "no-store",
     },
+  }, (err) => {
+    // commit/retry等でファイルが差し替わった直後、videoタグの古いRangeリクエストが
+    // 416(Range Not Satisfiable)になることがある。ブラウザ側は自動的に再取得するため
+    // 実害はないが、コールバックを渡さないとプロセス全体のuncaughtExceptionハンドラまで
+    // 伝播してノイズなログになっていたため、ここで静かに処理する(2026-07-15)
+    if (err && !res.headersSent) {
+      res.status(err.status || 500).end();
+    }
   });
 }

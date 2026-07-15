@@ -135,9 +135,17 @@ export default function Edit() {
     });
   }, [engine, sync.videosBump]);
 
+  // run切替時のみプレビュー/ステータスをリセット(別effectに分離)。commit自身が
+  // videosBumpを+1する(他タブへの通知用)ため、それと同じeffectでリセットすると
+  // commit成功直後にresultVideo/statusが即座に消えてしまうバグがあった
+  // (2026-07-15ユーザー報告: 「Commitしても下に映像が出ず、ファイルも修正されていない」
+  // ——実際はサーバー側の書き込みは成功しており、UIが自分の更新通知で表示を消していた)
   useEffect(() => {
     setResultVideo(null);
     setStatus("");
+  }, [engine, runId]);
+
+  useEffect(() => {
     if (!runId) {
       setSegs([]);
       return;
