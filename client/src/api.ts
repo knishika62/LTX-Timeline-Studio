@@ -1,0 +1,110 @@
+import { useEffect, useRef, useState } from "react";
+
+export type Engine = "i2v" | "t2v";
+export type PromptFile = { name: string; path: string };
+export type Validation = { ok: boolean; segments?: number; totalSeconds?: number; error?: string };
+export type Keyframe = { path: string; seg: number; caption: string; mt?: number };
+export type SegVideo = { num: number; label: string; path: string; mt?: number };
+export type RunInfo = { runId: string; source: string; label: string };
+export type ExpectedSeg = { num: number; label: string };
+export type RunSnapshot = {
+  runId: string | null;
+  expected?: ExpectedSeg[];
+  keyframes: Keyframe[];
+  segments: SegVideo[];
+  final: string | null;
+  finalMtime: string | null;
+  orientation: string | null;
+};
+export type VideoItem = { name: string; path: string; mt?: number };
+export type SegPrompt = { num: number; label: string; duration: number; prompt: string; kf_prompt?: string };
+
+/** メディア配信URL(サーバー側でパス許可リスト検査+Range対応) */
+export const media = (p: string, v?: number | string | null) =>
+  `/media?p=${encodeURIComponent(p)}${v ? `&v=${encodeURIComponent(v)}` : ""}`;
+
+export async function api<T = unknown>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
+  const opts: RequestInit = { ...init };
+  if (init?.json !== undefined) {
+    opts.method = init.method ?? "POST";
+    opts.headers = { "Content-Type": "application/json", ...init.headers };
+    opts.body = JSON.stringify(init.json);
+  }
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error || `${res.status} ${res.statusText}`);
+  return data as T;
+}
+
+export async function uploadFile(file: File): Promise<{ path: string; name: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/upload", { method: "POST", body: form });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "upload failed");
+  return data;
+}
+
+export type JobStatus = "idle" | "running" | "done" | "error" | "stopped";
+
+export type JobState = {
+  // generation job
+  engine?: Engine;
+  runId?: string | null;
+  keyframes?: Keyframe[];
+  segments?: SegVideo[];
+  expected?: ExpectedSeg[];
+  final?: string | null;
+  finalMtime?: string | null;
+  orientation?: string | null;
+  // cass job
+  voice?: string;
+  sfx?: string;
+  bgmOrig?: string;
+  result?: string;
+  // bgm job
+  takes?: string[];
+};
+
+/** ジョブのSSE購読。切断時はEventSourceが自動再接続し、サーバーは接続のたびに
+ * ログ+状態を全量リプレイするので、タブのバックグラウンド化等で取りこぼしても
+ * 必ず完全な状態に復元される(Gradio版の「更新が止まって見える」問題の対策)。 */
+export function useJob(jobId: string | null) {
+  const [log, setLog] = useState("");
+  const [state, setState] = useState<JobState>({});
+  const [status, setStatus] = useState<JobStatus>("idle");
+  const esRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    if (!jobId) {
+      setStatus("idle");
+      return;
+    }
+    setLog("");
+    setState({});
+    setStatus("running");
+    const es = new EventSource(`/api/jobs/${jobId}/events`);
+    esRef.current = es;
+    es.onmessage = (ev) => {
+      const d = JSON.parse(ev.data);
+      if (d.type === "replay") {
+        setLog(d.log);
+        setState(d.state);
+        if (d.status !== "running") {
+          setStatus(d.status);
+          es.close();
+        }
+      } else if (d.type === "log") {
+        setLog((l) => l + d.line);
+      } else if (d.type === "state") {
+        setState(d.state);
+      } else if (d.type === "end") {
+        setStatus(d.status);
+        es.close();
+      }
+    };
+    return () => es.close();
+  }, [jobId]);
+
+  return { log, state, status };
+}

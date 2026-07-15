@@ -1,0 +1,274 @@
+:root {
+  --bg: #101014;
+  --bg-panel: #17171d;
+  --bg-card: #1e1e26;
+  --bg-input: #24242e;
+  --border: #34343f;
+  --text: #e6e6ec;
+  --text-dim: #9a9aa8;
+  --accent: #0ea5e9;
+  --accent-hover: #38bdf8;
+  --danger: #e05c5c;
+  --ok: #56c98d;
+  --warn: #e0b45c;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { margin: 0; height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Hiragino Sans", "Noto Sans JP", -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app { display: flex; flex-direction: column; height: 100%; }
+
+.app-header {
+  display: flex; align-items: center; gap: 20px;
+  padding: 10px 20px; border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  position: sticky; top: 0; z-index: 100;
+}
+.app-header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: 0.02em; }
+.app-header h1 span { color: var(--accent); }
+
+.tabs { display: flex; gap: 4px; }
+.tab-btn {
+  padding: 7px 16px; border: none; border-radius: var(--radius);
+  background: transparent; color: var(--text-dim);
+  cursor: pointer; font-size: 14px; font-weight: 500;
+}
+.tab-btn:hover { color: var(--text); background: var(--bg-card); }
+.tab-btn.active { background: var(--accent); color: #fff; }
+.tab-btn .badge {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ok); margin-left: 7px; vertical-align: middle;
+  animation: pulse 1.2s infinite;
+}
+@keyframes pulse { 50% { opacity: 0.3; } }
+
+.app-body { flex: 1; overflow-y: auto; padding: 20px; }
+.tab-page { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+.panel {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.panel h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.panel h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row.top { align-items: flex-start; }
+.grow { flex: 1; min-width: 200px; }
+
+label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+
+input[type="text"], input[type="number"], textarea, select {
+  background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; font-size: 14px; font-family: inherit;
+  outline: none;
+}
+input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+textarea { resize: vertical; line-height: 1.5; }
+
+/* 通常ボタンは背景・パネルの暗色と馴染んで見落とされやすかった(2026-07-15ユーザー指摘: Write Promptの
+   「Refresh summary」・CASSの「Draft from prompt file」「Use take」等)。カード内(audio-card/seg-card、
+   自身も暗い枠を持つ)に置かれても埋もれないよう、周囲よりはっきり明るい背景+アクセント色をしっかり
+   帯びた枠+太めの文字+影で「押せるもの」だと分かるようにする。 */
+button {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-input));
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 8px;
+  padding: 8px 14px; font-size: 14px; font-weight: 500; font-family: inherit;
+  cursor: pointer; white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-input));
+  border-color: var(--accent);
+}
+button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+button.danger { border-color: var(--danger); color: var(--danger); }
+button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+button.icon { padding: 8px 10px; }
+
+.seg-radio { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg-radio button { border: none; border-radius: 0; padding: 7px 14px; background: var(--bg-input); color: var(--text-dim); box-shadow: none; }
+.seg-radio button.active { background: var(--accent); color: #fff; }
+
+.status { font-size: 13px; color: var(--text-dim); white-space: pre-wrap; }
+.status.ok { color: var(--ok); }
+.status.warn { color: var(--warn); }
+.status.error { color: var(--danger); }
+
+/* ---- log panel ---- */
+details.log { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+details.log summary {
+  padding: 8px 12px; cursor: pointer; background: var(--bg-card);
+  font-size: 13px; color: var(--text-dim); user-select: none;
+}
+details.log pre {
+  margin: 0; padding: 10px 12px; max-height: 320px; overflow-y: auto;
+  font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-all;
+  background: #0c0c10; color: #b8ffc8;
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+}
+
+/* ---- galleries / grids ---- */
+.kf-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.kf-item { cursor: zoom-in; border-radius: 8px; overflow: hidden; background: var(--bg-card); border: 1px solid var(--border); }
+.kf-item img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block; }
+.kf-item .cap { padding: 3px 8px; font-size: 11px; color: var(--text-dim); text-align: center; }
+
+/* Per-segment videosはキーフレームと同じ幅(拡大表示があるため小さくてよい) */
+.seg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.seg-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px;
+}
+.seg-card.selectable { cursor: pointer; }
+.seg-card.selectable:hover { border-color: var(--text-dim); }
+.seg-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.seg-card .sel-mark { color: var(--accent); }
+.pending-box {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 140px; border: 1px dashed var(--border); border-radius: 6px;
+  color: var(--text-dim); font-size: 12px; background: var(--bg-input);
+}
+.kf-item.pending { cursor: default; }
+.kf-item.pending .pending-box { aspect-ratio: 1 / 1; min-height: 0; border: none; border-radius: 0; }
+/* AudioWithWaveform: canvas波形(+再生位置の縦線)とネイティブaudioコントロールを縦に並べる。
+   波形+縦線は絶対配置を使うため専用wrapper(waveform-canvas-wrap)に分離し、外側の
+   waveform-wrapへ高さを固定しない(固定するとネイティブaudioコントロールが表示領域を
+   失って消える不具合があった、2026-07-15)。 */
+.waveform-wrap { display: flex; flex-direction: column; gap: 6px; }
+.waveform-canvas-wrap { position: relative; }
+.waveform { display: block; width: 100%; border-radius: 4px; background: var(--bg-input); }
+.waveform-playhead {
+  position: absolute; top: 0; width: 2px;
+  background: #fff; box-shadow: 0 0 4px var(--accent);
+  pointer-events: none; transition: left 0.1s linear;
+}
+.waveform-wrap audio { width: 100%; height: 34px; }
+.seg-card video { width: 100%; border-radius: 6px; background: #000; }
+.seg-card .seg-head { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-dim); overflow: hidden; }
+.seg-card .seg-head button { padding: 2px 7px; font-size: 12px; flex-shrink: 0; }
+
+.final-video { width: 100%; max-height: 70vh; border-radius: 8px; background: #000; }
+
+/* ---- checkboxes ---- */
+.check-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.check-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
+  cursor: pointer; user-select: none; font-size: 13px; color: var(--text-dim);
+  background: var(--bg-input);
+}
+.check-chip.checked { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 18%, var(--bg-input)); }
+.check-chip input { display: none; }
+
+/* ---- lightbox ---- */
+.lightbox {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, 0.93);
+  display: flex; align-items: center; justify-content: center;
+  padding: 3vh 3vw;
+}
+.lightbox img, .lightbox video { max-width: 92vw; max-height: 88vh; object-fit: contain; border-radius: 4px; }
+.lightbox .lb-caption {
+  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+  color: var(--text-dim); font-size: 13px; background: rgba(0,0,0,0.6);
+  padding: 4px 14px; border-radius: 999px;
+}
+.lightbox .lb-close { position: fixed; top: 16px; right: 24px; z-index: 1001; }
+.lightbox .lb-nav {
+  position: fixed; top: 50%; transform: translateY(-50%); z-index: 1001;
+  width: 48px; height: 48px; border-radius: 50%; font-size: 24px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(30, 30, 38, 0.85);
+}
+.lightbox .lb-prev { left: 24px; }
+.lightbox .lb-next { right: 24px; }
+
+/* ---- edit tab(セグメント数が増えても破綻しない横並びグリッド、幅はseg-gridと同一) ---- */
+.edit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.edit-card {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px; cursor: grab;
+}
+.edit-card.drag-over { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.edit-card.removed { opacity: 0.45; }
+.edit-card.removed video { filter: grayscale(1); }
+.edit-card video { width: 100%; border-radius: 6px; background: #000; }
+.edit-card .name { font-size: 12px; color: var(--text-dim); font-weight: 600; }
+.edit-card .name b { color: var(--warn); }
+.edit-card .seg-head button { padding: 3px 8px; font-size: 13px; }
+
+/* ---- trim modal ---- */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex; align-items: center; justify-content: center; padding: 4vh 4vw;
+}
+.modal {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: 18px; width: min(720px, 92vw);
+  max-height: 90vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.modal h2 { margin: 0; font-size: 15px; }
+.modal video { width: 100%; max-height: 46vh; border-radius: 8px; background: #000; }
+
+.trim-slider { position: relative; height: 34px; margin: 4px 6px; }
+.trim-slider .track {
+  position: absolute; top: 14px; left: 0; right: 0; height: 6px;
+  border-radius: 3px; background: var(--bg-input); border: 1px solid var(--border);
+}
+.trim-slider .range { position: absolute; top: 14px; height: 6px; border-radius: 3px; background: var(--accent); }
+.trim-slider input[type="range"] {
+  position: absolute; top: 6px; left: 0; width: 100%; margin: 0;
+  -webkit-appearance: none; appearance: none; background: transparent; pointer-events: none; height: 22px;
+}
+.trim-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; pointer-events: auto;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; border: 3px solid var(--accent); cursor: ew-resize;
+}
+.trim-slider input[type="range"]::-moz-range-thumb {
+  pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; border: 3px solid var(--accent); cursor: ew-resize;
+}
+
+/* ---- audio row ---- */
+.audio-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.audio-row .audio-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+.audio-row .audio-card .cap { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.audio-row audio { width: 100%; height: 34px; }
+
+.subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding-bottom: 0; }
+.subtabs button {
+  border: none; border-radius: 8px 8px 0 0; background: transparent; color: var(--text-dim);
+  padding: 8px 16px; border-bottom: 2px solid transparent; box-shadow: none;
+}
+.subtabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+
+.two-col { display: grid; grid-template-columns: minmax(340px, 1fr) 2fr; gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .two-col { grid-template-columns: 1fr; } }
+
+.spinner {
+  display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--text-dim); border-top-color: transparent;
+  animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

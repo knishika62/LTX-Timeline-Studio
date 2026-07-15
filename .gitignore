@@ -1,0 +1,15 @@
+node_modules/
+client/node_modules/
+client/dist/
+client/tsconfig.tsbuildinfo
+generated/
+uploads/
+prompt/
+CASS/
+workflows/
+.env
+__pycache__/
+*.py
+!bridge.py
+.DS_Store
+CLAUDE.md
