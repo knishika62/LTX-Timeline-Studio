@@ -1140,9 +1140,9 @@ def _keyframe_size(width: int, height: int) -> tuple[int, int]:
 
 async def _generate_i2v_video(prompt: str, kf_server_name: str, width: int, height: int, duration_s: float, bypass_likeness: bool = False) -> Path:
     """I2V動画生成の実行エンジン切替(.envのI2V_VIDEO_ENGINE、テスト用)。
-    "10e"ならworkflows/10E-ltx_2_3_i2v.json(10Erosチェックポイント検証用、2026-07-09)、
-    "refine"ならworkflows/refine_ltx2_3.json(顔検出+同一性アンカー付き2段サンプリング検証用、2026-07-10)、
-    それ以外は従来通りgenerate_t2v_video()(2026_ltx2_3_t2v.jsonのI2Vモード)を使う。t2v_timeline_cliV5は
+    "10e"ならworkflows/10E_video.json(10Erosチェックポイント検証用、2026-07-09)、
+    "refine"ならworkflows/refine_video.json(顔検出+同一性アンカー付き2段サンプリング検証用、2026-07-10)、
+    それ以外は従来通りgenerate_t2v_video()(video.jsonのI2Vモード)を使う。t2v_timeline_cliV5は
     このフラグを見ないため無条件に従来のまま(generate_t2v_video()を直接呼ぶ)。
     bypass_likenessは"refine"エンジンでのみ意味を持つ(`--norefine`用、顔が手/物で隠れるセグメントの
     破綻対策としてLTX Likeness Anchorだけbypassする)。"""

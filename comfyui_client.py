@@ -282,7 +282,7 @@ async def generate_t2v_video(prompt: str, width: int = 720, height: int = 1280, 
     keyframe_server_filename: 指定時はI2Vモードに切り替え(node 356=False)、node 269(LoadImage)に
     1stフレーム画像を設定する(T2V/I2Vは同一ワークフローでboolスイッチのみの違い)。未指定なら従来通りT2V。
     """
-    workflow = _load_workflow("2026_ltx2_3_t2v.json")
+    workflow = _load_workflow("video.json")
 
     workflow["373"]["inputs"]["value"] = prompt      # input1: テキストプロンプト
     workflow["366"]["inputs"]["value"] = width        # Width(px)
@@ -313,11 +313,11 @@ async def generate_t2v_video(prompt: str, width: int = 720, height: int = 1280, 
 
 async def generate_video_10e(prompt: str, keyframe_server_filename: str, width: int, height: int, duration_s: float) -> Path:
     """動画を生成してローカルに保存したPathを返す(10Erosチェックポイント+DMD LoRAの検証用ワークフロー、
-    workflows/10E-ltx_2_3_i2v.json)。i2v_timeline_cliV6のテスト用エンジン(.envのI2V_VIDEO_ENGINE=10eで有効化、
+    workflows/10E_video.json)。i2v_timeline_cliV6のテスト用エンジン(.envのI2V_VIDEO_ENGINE=10eで有効化、
     デフォルトはgenerate_t2v_video()のまま)。触ってよいノードはユーザー指定の5つのみ(2026-07-09)、
     それ以外(LoRA有効/無効・negativeプロンプト等)はワークフローJSONの値をそのまま使う。
     """
-    workflow = _load_workflow("10E-ltx_2_3_i2v.json")
+    workflow = _load_workflow("10E_video.json")
 
     workflow["536"]["inputs"]["text"] = prompt                        # CLIP Text Encode (Prompt)
     workflow["837"]["inputs"]["image"] = keyframe_server_filename      # Load Image
@@ -348,12 +348,12 @@ async def generate_video_10e(prompt: str, keyframe_server_filename: str, width: 
 
 async def generate_video_refine_ltx23(prompt: str, keyframe_server_filename: str, width: int, height: int, duration_s: float, bypass_likeness: bool = False) -> Path:
     """動画を生成してローカルに保存したPathを返す(顔検出+同一性アンカー付き2段サンプリング検証用ワークフロー、
-    workflows/refine_ltx2_3.json)。i2v_timeline_cliV6のテスト用エンジン(.envのI2V_VIDEO_ENGINE=refineで有効化)。
+    workflows/refine_video.json)。i2v_timeline_cliV6のテスト用エンジン(.envのI2V_VIDEO_ENGINE=refineで有効化)。
     触ってよいノードはユーザー指定の6つのみ(2026-07-10)、それ以外(LoRA・likeness anchor各種strength・
     negativeプロンプト・サンプラー設定等)はワークフローJSONの値をそのまま使う。
     bypass_likeness=Trueで`354 LTX Likeness Anchor`をbypassする(`--norefine`用。顔が手/物で隠れる
     動作でこのノードが同一性を引き戻そうとして画像が破綻する対策、2026-07-10)。"""
-    workflow = _load_workflow("refine_ltx2_3.json")
+    workflow = _load_workflow("refine_video.json")
 
     workflow["303"]["inputs"]["value"] = prompt                             # Prompt
     workflow["269"]["inputs"]["image"] = keyframe_server_filename           # LoadImage
@@ -376,41 +376,6 @@ async def generate_video_refine_ltx23(prompt: str, keyframe_server_filename: str
     files = node_out.get("videos") or node_out.get("gifs") or node_out.get("images") or []
     if not files:
         raise RuntimeError(f"refine_ltx2_3動画出力が見つかりません: {node_out}")
-    file_info = files[0]
-    filename = file_info["filename"]
-    subfolder = file_info.get("subfolder", "")
-
-    dest = cfg.GENERATED_DIR / filename
-    return await _download_output(filename, subfolder, server, dest)
-
-
-async def generate_video(prompt: str, keyframe_server_filename: str) -> Path:
-    """動画を生成してローカルに保存したPathを返す。"""
-    workflow = _load_workflow("video.json")
-
-    # プロンプト注入 (node 54 = Text Multiline)
-    workflow["54"]["inputs"]["text"] = prompt
-    # keyframe画像 (node 46 = LoadImage)
-    workflow["46"]["inputs"]["image"] = keyframe_server_filename
-    # seedランダム化 (node 45 = PrimitiveInt)
-    workflow["45"]["inputs"]["value"] = random.randint(0, 2**31 - 1)
-    # ワークフロー内LLMノードのURLとモデルを.envで上書き
-    for node_id in ("51", "52"):
-        if node_id in workflow:
-            workflow[node_id]["inputs"]["base_url"] = cfg.COMFYUI_LLM_BASE_URL
-            workflow[node_id]["inputs"]["model"] = cfg.COMFYUI_LLM_MODEL
-            if cfg.COMFYUI_LLM_API_KEY:
-                workflow[node_id]["inputs"]["api_key"] = cfg.COMFYUI_LLM_API_KEY
-
-    server = cfg.COMFYUI_VIDEO_URL
-    prompt_id = await _queue_prompt(workflow, server)
-    outputs = await _wait_for_output(prompt_id, server, VIDEO_TIMEOUT_S)
-
-    # node 39 = VHS_VideoCombine (gifs or videos key)
-    node_out = outputs.get("39", {})
-    files = node_out.get("gifs") or node_out.get("videos") or []
-    if not files:
-        raise RuntimeError(f"動画出力が見つかりません: {node_out}")
     file_info = files[0]
     filename = file_info["filename"]
     subfolder = file_info.get("subfolder", "")
