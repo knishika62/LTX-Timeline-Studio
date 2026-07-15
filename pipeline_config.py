@@ -25,7 +25,6 @@ COMFYUI_LLM_API_KEY: str = _get("COMFYUI_LLM_API_KEY", "")
 
 COMFYUI_IMAGE_URL: str = _get("COMFYUI_IMAGE_URL", "http://192.168.11.200:8188")
 COMFYUI_VIDEO_URL: str = _get("COMFYUI_VIDEO_URL", "http://192.168.11.225:8188")
-MII_TTS_URL: str = _get("MII_TTS_URL", "http://192.168.11.20:8767")
 
 # i2v_timeline_cli のキーフレーム生成用: image.json の lora_01(キャラLoRA)の上書き設定。
 # 名前が空なら image.json の値をそのまま使用。強度 -1 はそのまま、0 でLoRA無効化(任意キャラ生成用)
@@ -66,24 +65,9 @@ IMAGE_PROMPT_PREFIX: str = _get(
     "masterpiece, best quality, photorealistic, 8K, highly detailed, cinematic lighting, sharp focus, professional photography",
 )
 
-EMAIL_TO: str = _get("EMAIL_TO", "")
-EMAIL_FROM: str = _get("EMAIL_FROM", "")
-EMAIL_SMTP_SERVER: str = _get("EMAIL_SMTP_SERVER", "smtp.gmail.com")
-EMAIL_SMTP_PORT: int = int(_get("EMAIL_SMTP_PORT", "587"))
-EMAIL_SMTP_USER: str = _get("EMAIL_SMTP_USER", "")
-EMAIL_SMTP_PASSWORD: str = _get("EMAIL_SMTP_PASSWORD", "")
-
-PIPELINE_PORT: int = int(_get("PIPELINE_PORT", "8766"))
-SCHEDULER_ENABLED: bool = _get("SCHEDULER_ENABLED", "true").lower() == "true"
-TREND_CACHE_PATH: Path = Path(_get("TREND_CACHE_PATH", r"D:\works\.openclaw\workspace\memory\fashion_trends.md"))
-
-PERSONA_PATH: Path = _BASE_DIR / "persona.md"
 WORKFLOWS_DIR: Path = _BASE_DIR / "workflows"
 GENERATED_DIR: Path = _BASE_DIR / "generated"
 GENERATED_DIR.mkdir(exist_ok=True)
-WARDROBE_HISTORY_PATH: Path = GENERATED_DIR / "wardrobe_history.txt"
-WARDROBE_HISTORY_MAX: int = 10
-TOKYO_EVENTS_PATH: Path = Path(_get("TOKYO_EVENTS_PATH", r"D:\works\.openclaw\workspace\memory\tokyo_events.md"))
 
 # ACE-Step-1.5 BGM生成APIサーバー(bgm_generate_cli.py専用、パイプライン本体には未統合、2026-07-13)
 ACESTEP_URL: str = _get("ACESTEP_URL", "http://192.168.11.200:8001")

@@ -9,11 +9,10 @@ export function condaPythonArgs(env, script, args = []) {
 }
 
 /** conda env 内で python モジュールとして起動する(`python -m`)。
- * 生成CLI(シンボリックリンク)を `python script.py` で直接実行すると、Python 3.11+ が
- * メインスクリプトのパスを realpath 解決して sys.path[0] が ../x-post になり、
- * pipeline_config 等の import が全て x-post 側に解決されてしまう(= generated/ も
- * x-post 側に書かれる)。`-m` なら sys.path[0] = cwd(本フォルダ)のままなので、
- * シンボリックリンク経由の import が本フォルダ基準で解決される。 */
+ * 生成CLIをシンボリックリンク経由で `python script.py` として直接実行すると、Python 3.11+ が
+ * メインスクリプトのパスを realpath 解決してしまい、sys.path[0] がリンク先の実体ディレクトリになる
+ * (= pipeline_config 等のimportも generated/ の書き込み先もリンク先基準になってしまう、実機で踏んだ罠)。
+ * `-m` なら sys.path[0] = cwd(本フォルダ)のままなので、この問題が起きない。 */
 export function condaPythonModuleArgs(env, module, args = []) {
   return [CONDA, ["run", "--no-capture-output", "-n", env, "python", "-u", "-m", module, ...args]];
 }

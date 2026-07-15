@@ -22,8 +22,8 @@ export const CONDA = process.env.CONDA_EXE || "/opt/miniconda3/bin/conda";
 
 // .env は process.env に読み込まず、使う瞬間に毎回パースする。
 // 子プロセス(生成CLI)にも .env 由来のキーを一切注入しない——子の load_dotenv() が
-// 常に最新の .env を読むため、Gradio版で踏んだ「ハーネス起動中の .env 変更が
-// 子プロセスに反映されない罠」(x-post/CLAUDE.md 2026-07-14)が構造的に起きない。
+// 常に最新の .env を読むため、「ハーネス起動中の .env 変更が子プロセスに反映されない」
+// という、process.env経由で一度読み込んでしまう実装だと起きがちな罠が構造的に起きない。
 export function readEnv() {
   try {
     return dotenv.parse(fs.readFileSync(path.join(BASE_DIR, ".env")));

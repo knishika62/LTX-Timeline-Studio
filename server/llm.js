@@ -134,7 +134,7 @@ async function runLLM(system, user, temperature = 0.7) {
     model: env.LLM_MODEL,
     messages: [
       { role: "system", content: system },
-      // Qwen系のthinkingモード抑制はユーザーメッセージ先頭の /no_think(x-post/CLAUDE.md)
+      // Qwen系のthinkingモード抑制はユーザーメッセージ先頭に /no_think を付与する
       { role: "user", content: `/no_think\n${user}` },
     ],
     temperature,

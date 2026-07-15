@@ -14,7 +14,7 @@ t2v_timeline_cliV2(T2V直接生成)との違い:
   - Pass3をKeyframe Formatter(静止画プロンプト、見た目・構図の全情報)と
     Motion Formatter(動きのみ。LTX公式I2V原則「画像に見えている静的要素は記述しない」)に分割
   - キーフレームのキャラLoRAは .env の KEYFRAME_LORA_NAME / KEYFRAME_LORA_STRENGTH で可変
-    (未設定=image.jsonのzib-hinaのまま、STRENGTH=0でLoRA無効=任意キャラ)
+    (未設定=image.jsonのデフォルトLoRAのまま、STRENGTH=0でLoRA無効=任意キャラ)
   - 全キーフレームで同一seedを使用(LoRAなし時のキャラ一貫性向上)
 """
 
