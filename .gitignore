@@ -9,7 +9,5 @@ CASS/
 workflows/
 .env
 __pycache__/
-*.py
-!bridge.py
 .DS_Store
 CLAUDE.md
