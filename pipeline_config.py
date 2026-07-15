@@ -48,7 +48,7 @@ FADE_OUT_ENABLED: bool = _get("FADE_OUT_ENABLED", "true").lower() == "true"
 KEYFRAME_SIZE_SCALE: float = float(_get("KEYFRAME_SIZE_SCALE", "1.0"))
 
 # i2v_timeline_cliV6 の動画生成エンジン切替(テスト用、2026-07-09)。"default" = 従来通り
-# generate_t2v_video()(video.jsonのI2Vモード)。"10e" = generate_video_10e()
+# generate_t2v_video()(video.jsonのI2Vモード)。"10E" = generate_video_10e()
 # (workflows/10E_video.json、10Erosチェックポイント+DMD LoRAの検証用ワークフロー)。
 # "refine" = generate_video_refine_ltx23()(workflows/refine_video.json、顔検出+同一性アンカー付き
 # 2段サンプリング検証用ワークフロー、2026-07-10)。

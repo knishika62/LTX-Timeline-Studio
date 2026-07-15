@@ -57,7 +57,6 @@ conda run -n x-post python i2v_timeline_cliV6.py --h --f prompt/example.txt --de
 | `--debug` | フラグ | LLMパスのプロンプト生成のみ実行。ComfyUI/ffmpegをスキップ。反復改善に使う |
 | `--retry` | `RUN_ID` | 既存runの指定セグメントだけ別seedで再生成→final再連結(下記参照)。`--f`とは排他 |
 | `--seg` | `N[,N...]` | `--retry`で再生成するセグメント番号(1始まり、カンマ区切り)。`--retry`省略時は直近runを自動使用 |
-| `--norefine` | フラグ | (i2vのみ)`.env`の`I2V_VIDEO_ENGINE=refine`時、`LTX Likeness Anchor`をbypassして生成(顔が手/物で隠れるセグメントの破綻対策)。`--f`・`--retry --seg`どちらでも使える。`refine`以外の時は警告のうえ無視 |
 | `--keep` | フラグ | (i2vのみ)`--seg`専用。既存のキーフレーム画像をそのまま使い、動画生成だけをやり直す |
 | `--direct` | `SECONDS` | デバッグ用。LLMパイプラインを一切通さず`--f`のファイル内容をそのままComfyUIに渡してSECONDS秒の動画を1本生成(下記参照) |
 | `--upscale` | `[RUN_ID]` | 既存runの最終動画(`_final.mp4`)をRTX Video Super ResolutionでフルHD化(下記参照)。他の引数とは排他 |
@@ -102,8 +101,7 @@ Ambience: [アンビエンス/環境音の説明]
 ```bash
 conda run -n x-post python t2v_timeline_cliV6.py --retry 20260704_080510 --seg 3,7
 conda run -n x-post python t2v_timeline_cliV6.py --seg 3,7   # --retry省略で直近のrun
-conda run -n x-post python i2v_timeline_cliV6.py --seg 3 --norefine        # refineエンジンの顔破綻対策
-conda run -n x-post python i2v_timeline_cliV6.py --seg 3 --norefine --keep # キーフレームは既存のまま動画だけやり直す
+conda run -n x-post python i2v_timeline_cliV6.py --seg 3 --keep # キーフレームは既存のまま動画だけやり直す
 ```
 
 旧takeは `..._old1.mp4` 等に退避され、比較試聴できる(concat対象外、Libraryタブでも「old」ラベル付きで確認可能)。
@@ -119,7 +117,7 @@ conda run -n x-post python i2v_timeline_cliV6.py --direct 4 --v --f prompt/raw.t
 
 - `--f`のファイルは**タイムライン形式である必要はない**(`_parse_prompt`を経由しないため)。ファイル全文がそのままプロンプトになる
 - i2vのみ: ファイルに`--- Keyframe prompt ---`区切りがあればKeyframe用/Motion用に分割して使う。無ければ全文をKeyframe・Motion両方に使う
-- `--retry` / `--seg` / `--upscale` / `--debug` とは同時指定できない(`parser.error`)。`--keep`は新規生成のため無効(指定時は警告のうえ無視)。`--norefine`(i2vのみ)は独立した軸のため通常通り使える
+- `--retry` / `--seg` / `--upscale` / `--debug` とは同時指定できない(`parser.error`)。`--keep`は新規生成のため無効(指定時は警告のうえ無視)
 - 出力は通常runと同じ命名規則(`{prefix}_{run_id}_seg01_direct.mp4` / `_final.mp4` / `_prompts.txt`、`prompts.txt`に`direct: true`ヘッダー)で書かれるため、Generate/Retry/Edit/Libraryタブは無改修でdirectモードのrunを表示・操作できる
 - **リトライも可能**: directモードのrunは常にセグメント1つのみのため、`--retry RUN_ID`だけで`--seg`を省略できる(自動的に`seg 1`扱い)。i2vなら`--keep`でキーフレームを再利用したまま動画だけやり直せる
 
@@ -148,7 +146,7 @@ conda run -n x-post python i2v_timeline_cliV6.py --upscale
 | `KEYFRAME_WORKFLOW_JSON` | キーフレーム生成に使うComfyUIワークフローJSON(`workflows/`配下)。デフォルト`image.json` |
 | `KEYFRAME_SIZE_SCALE` | キーフレーム生成解像度の倍率(動画のwidth/heightに対して、アスペクト比維持)。デフォルト`1.0`。Krea2は`1.2`推奨 |
 | `FADE_OUT_ENABLED` | 最終連結動画の末尾フェードアウト(映像・音声とも1秒)。デフォルト`true` |
-| `I2V_VIDEO_ENGINE` | `default` / `10e` / `refine`。i2vの動画生成エンジン切替(テスト用) |
+| `I2V_VIDEO_ENGINE` | i2vの動画生成に使うComfyUIワークフローJSON(`workflows/`配下)。デフォルト`default`(`video.json`と同じI2Vモード)。`.json`ファイル名を指定するとそのファイルをそのまま使う(`video.json`と同じノードID体系を持つことが必須、指定JSONが無い/ノード構成が異なる場合のエラーは自己責任) |
 | `T2V_VIDEO_ENGINE` | t2vの動画生成に使うComfyUIワークフローJSON(`workflows/`配下)。デフォルト`video.json`。指定JSONが無い/ノード構成が異なる場合のエラーは自己責任(バリデーション無し) |
 
 ### LLMアーキテクチャの概要

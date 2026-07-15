@@ -1140,17 +1140,23 @@ def _keyframe_size(width: int, height: int) -> tuple[int, int]:
 
 async def _generate_i2v_video(prompt: str, kf_server_name: str, width: int, height: int, duration_s: float, bypass_likeness: bool = False) -> Path:
     """I2V動画生成の実行エンジン切替(.envのI2V_VIDEO_ENGINE、テスト用)。
-    "10e"ならworkflows/10E_video.json(10Erosチェックポイント検証用、2026-07-09)、
+    "10E"ならworkflows/10E_video.json(10Erosチェックポイント検証用、2026-07-09)、
     "refine"ならworkflows/refine_video.json(顔検出+同一性アンカー付き2段サンプリング検証用、2026-07-10)、
-    それ以外は従来通りgenerate_t2v_video()(video.jsonのI2Vモード)を使う。t2v_timeline_cliV5は
-    このフラグを見ないため無条件に従来のまま(generate_t2v_video()を直接呼ぶ)。
+    "default"なら従来通りgenerate_t2v_video()(T2V_VIDEO_ENGINEのファイルをI2Vモードで使用)。
+    それ以外(上記3つのいずれでもない値)は**ファイル名として扱い**、workflows/配下のそのファイルを
+    generate_t2v_video()へそのまま渡す(video.jsonと同じノードID体系を持つ前提、それ以外は
+    KeyErrorになる自己責任、2026-07-16)。t2v_timeline_cliV5はこのフラグを見ないため無条件に
+    従来のまま(generate_t2v_video()を直接呼ぶ)。
     bypass_likenessは"refine"エンジンでのみ意味を持つ(`--norefine`用、顔が手/物で隠れるセグメントの
     破綻対策としてLTX Likeness Anchorだけbypassする)。"""
-    if cfg.I2V_VIDEO_ENGINE == "10e":
+    if cfg.I2V_VIDEO_ENGINE == "10E":
         return await generate_video_10e(prompt, kf_server_name, width, height, duration_s)
     if cfg.I2V_VIDEO_ENGINE == "refine":
         return await generate_video_refine_ltx23(prompt, kf_server_name, width, height, duration_s, bypass_likeness=bypass_likeness)
-    return await generate_t2v_video(prompt, width, height, duration_s, keyframe_server_filename=kf_server_name)
+    if cfg.I2V_VIDEO_ENGINE == "default":
+        return await generate_t2v_video(prompt, width, height, duration_s, keyframe_server_filename=kf_server_name)
+    return await generate_t2v_video(prompt, width, height, duration_s, keyframe_server_filename=kf_server_name,
+                                     workflow_json=cfg.I2V_VIDEO_ENGINE)
 
 
 async def _run_direct(args: argparse.Namespace) -> None:

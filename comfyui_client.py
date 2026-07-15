@@ -21,6 +21,7 @@ RETRY_DELAY_S = 3
 
 
 def _load_workflow(name: str) -> dict:
+    print(f"[comfyui] workflow: {name}")
     path = cfg.WORKFLOWS_DIR / name
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -276,17 +277,20 @@ async def generate_video_v2(prompt: str, keyframe_server_filename: str) -> Path:
 
 
 async def generate_t2v_video(prompt: str, width: int = 720, height: int = 1280, duration_s: int = 5,
-                             keyframe_server_filename: str | None = None) -> Path:
+                             keyframe_server_filename: str | None = None, workflow_json: str | None = None) -> Path:
     """テキストから動画を生成してローカルに保存したPathを返す(T2V、2026版LTX-2.3ワークフロー)。
 
     keyframe_server_filename: 指定時はI2Vモードに切り替え(node 356=False)、node 269(LoadImage)に
     1stフレーム画像を設定する(T2V/I2Vは同一ワークフローでboolスイッチのみの違い)。未指定なら従来通りT2V。
 
-    ワークフローJSONは.envのT2V_VIDEO_ENGINEで差し替え可能(デフォルトvideo.json)。
-    指定したJSONが存在しない、またはノード構成が異なる場合のエラーはユーザー側の責任
-    (ここではバリデーションしない、KEYFRAME_WORKFLOW_JSONと同じ方針)。
+    ワークフローJSONは.envのT2V_VIDEO_ENGINEで差し替え可能(デフォルトvideo.json)。i2v側は
+    workflow_json引数で.envのI2V_VIDEO_ENGINEを明示的に渡せる(値が"default"/"10e"/"refine"以外の
+    場合のみ——それらは_generate_i2v_video()が専用エンジンへ振り分ける)。
+    **指定するJSONはvideo.jsonと同じノードID体系(373/366/353/355/331/356/269等)を持つことが必須**。
+    存在しない、またはノード構成が異なるJSONを指定した場合のエラーはユーザー側の責任
+    (ここではバリデーションしない、KEYFRAME_WORKFLOW_JSONと同じ方針、2026-07-16)。
     """
-    workflow = _load_workflow(cfg.T2V_VIDEO_ENGINE)
+    workflow = _load_workflow(workflow_json or cfg.T2V_VIDEO_ENGINE)
 
     workflow["373"]["inputs"]["value"] = prompt      # input1: テキストプロンプト
     workflow["366"]["inputs"]["value"] = width        # Width(px)

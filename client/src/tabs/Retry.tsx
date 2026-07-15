@@ -13,6 +13,13 @@ export default function Retry() {
   const [selected, setSelected] = useState<number[]>([]);
   const [keep, setKeep] = useState(false);
   const [norefine, setNorefine] = useState(false);
+  // --norefineは.envのI2V_VIDEO_ENGINE=refine時のみ意味を持つため、それ以外では隠す
+  // (.env変更をこのタブに反映するにはページreloadが必要——サーバー起動中の.env変更は都度反映されるが、
+  // このタブは初回マウント時にしか取得しない、ユーザー承認済みの割り切り、2026-07-16)
+  const [refineEnabled, setRefineEnabled] = useState(false);
+  useEffect(() => {
+    api<{ engine: string }>("/api/i2v-engine").then((r) => setRefineEnabled(r.engine === "refine"));
+  }, []);
   const [editPrompt, setEditPrompt] = useState("");
   const [editKfPrompt, setEditKfPrompt] = useState("");
   const [editLoaded, setEditLoaded] = useState(false);
@@ -145,10 +152,12 @@ export default function Retry() {
               <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
               --keep (reuse existing keyframe)
             </label>
-            <label className={`check-chip ${norefine ? "checked" : ""}`}>
-              <input type="checkbox" checked={norefine} onChange={(e) => setNorefine(e.target.checked)} />
-              --norefine
-            </label>
+            {refineEnabled && (
+              <label className={`check-chip ${norefine ? "checked" : ""}`}>
+                <input type="checkbox" checked={norefine} onChange={(e) => setNorefine(e.target.checked)} />
+                --norefine
+              </label>
+            )}
           </div>
         )}
 

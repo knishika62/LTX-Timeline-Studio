@@ -3,7 +3,7 @@ import path from "node:path";
 import express from "express";
 import multer from "multer";
 
-import { BASE_DIR, UPLOADS_DIR, PORT, PREFIXES } from "./config.js";
+import { BASE_DIR, UPLOADS_DIR, PORT, PREFIXES, readEnv } from "./config.js";
 import {
   listRuns, runSnapshot, listGeneratedVideos, listBgmFiles,
   listLibraryRuns, libraryRunDetail, presetToSinceMs, deleteLibraryRun,
@@ -64,6 +64,12 @@ app.get("/api/runs/:engine/:runId/seg/:num/prompt", wrap(async (req, res) => {
 }));
 app.get("/api/videos", (req, res) => res.json(listGeneratedVideos()));
 app.get("/api/bgm-files", (req, res) => res.json(listBgmFiles()));
+
+// i2vの動画生成エンジン(.envのI2V_VIDEO_ENGINE)。Retryタブの--norefine表示切替に使う
+// (I2V_VIDEO_ENGINE=refine時のみ意味を持つオプションのため、それ以外では隠す)
+app.get("/api/i2v-engine", (req, res) => {
+  res.json({ engine: readEnv().I2V_VIDEO_ENGINE || "default" });
+});
 
 // ---------- Library(閲覧専用: 全run横断ビューア) ----------
 app.get("/api/library/runs", (req, res) => {
