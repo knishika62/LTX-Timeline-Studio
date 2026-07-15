@@ -140,7 +140,7 @@ conda run -n x-post python i2v_timeline_cliV6.py --upscale
 
 出力は`{run_id}_final_FHD.mp4`(元ファイルは残る)。
 
-### .env 設定(i2vのキーフレーム関連)
+### .env 設定(i2vのキーフレーム・動画ワークフロー関連)
 
 | 変数 | 意味 |
 |---|---|
@@ -149,6 +149,7 @@ conda run -n x-post python i2v_timeline_cliV6.py --upscale
 | `KEYFRAME_SIZE_SCALE` | キーフレーム生成解像度の倍率(動画のwidth/heightに対して、アスペクト比維持)。デフォルト`1.0`。Krea2は`1.2`推奨 |
 | `FADE_OUT_ENABLED` | 最終連結動画の末尾フェードアウト(映像・音声とも1秒)。デフォルト`true` |
 | `I2V_VIDEO_ENGINE` | `default` / `10e` / `refine`。i2vの動画生成エンジン切替(テスト用) |
+| `T2V_VIDEO_ENGINE` | t2vの動画生成に使うComfyUIワークフローJSON(`workflows/`配下)。デフォルト`video.json`。指定JSONが無い/ノード構成が異なる場合のエラーは自己責任(バリデーション無し) |
 
 ### LLMアーキテクチャの概要
 
