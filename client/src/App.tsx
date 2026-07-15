@@ -7,6 +7,7 @@ import Retry from "./tabs/Retry";
 import Edit from "./tabs/Edit";
 import Cass from "./tabs/Cass";
 import Upscale from "./tabs/Upscale";
+import Library from "./tabs/Library";
 
 const TABS = [
   { id: "write", label: "① Write Prompt" },
@@ -15,6 +16,7 @@ const TABS = [
   { id: "edit", label: "④ Edit" },
   { id: "cass", label: "⑤ CASS" },
   { id: "upscale", label: "⑥ Upscale" },
+  { id: "library", label: "⑦ Library" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -59,6 +61,7 @@ export default function App() {
             <div hidden={tab !== "edit"}><Edit /></div>
             <div hidden={tab !== "cass"}><Cass /></div>
             <div hidden={tab !== "upscale"}><Upscale /></div>
+            <div hidden={tab !== "library"}><Library /></div>
           </main>
         </div>
       </LightboxProvider>

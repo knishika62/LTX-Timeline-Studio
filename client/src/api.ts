@@ -19,6 +19,28 @@ export type RunSnapshot = {
 export type VideoItem = { name: string; path: string; mt?: number };
 export type SegPrompt = { num: number; label: string; duration: number; prompt: string; kf_prompt?: string };
 
+// ---- Library(閲覧専用) ----
+export type LibraryRunInfo = {
+  engine: Engine; runId: string; source: string; label: string; mt: number; thumbnail: string | null;
+};
+export type LibraryKeyframe = { seg: number; path: string; mt: number; variant: string | null };
+export type LibrarySegVideo = { num: number; label: string; path: string; mt: number; variant: string | null };
+export type LibraryFinal = { path: string; mt: number; isFHD: boolean; variant: string | null };
+export type LibraryCassVideo = { path: string; name: string; mt: number };
+export type LibraryCassStem = { path: string; kind: string; group: string; mt: number };
+export type LibraryRunDetail = {
+  engine: Engine; runId: string;
+  header: Record<string, string>;
+  sourceRaw: string | null;
+  promptsRaw: string;
+  keyframes: LibraryKeyframe[];
+  segments: LibrarySegVideo[];
+  finals: LibraryFinal[];
+  cass: { videos: LibraryCassVideo[]; stems: LibraryCassStem[] };
+};
+export type LibraryPeriod = "today" | "7d" | "30d" | "all";
+export type LibraryRunsResponse = { runs: LibraryRunInfo[]; truncated: boolean; total: number };
+
 /** メディア配信URL(サーバー側でパス許可リスト検査+Range対応) */
 export const media = (p: string, v?: number | string | null) =>
   `/media?p=${encodeURIComponent(p)}${v ? `&v=${encodeURIComponent(v)}` : ""}`;

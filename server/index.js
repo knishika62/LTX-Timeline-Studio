@@ -4,7 +4,10 @@ import express from "express";
 import multer from "multer";
 
 import { BASE_DIR, UPLOADS_DIR, PORT, PREFIXES } from "./config.js";
-import { listRuns, runSnapshot, listGeneratedVideos, listBgmFiles } from "./scan.js";
+import {
+  listRuns, runSnapshot, listGeneratedVideos, listBgmFiles,
+  listLibraryRuns, libraryRunDetail, presetToSinceMs,
+} from "./scan.js";
 import {
   listPromptFiles, readPromptFile, savePromptFile, validatePrompt,
   readSegmentPrompt, writeSegmentPrompt, resolvePromptSourceForVideo,
@@ -61,6 +64,17 @@ app.get("/api/runs/:engine/:runId/seg/:num/prompt", wrap(async (req, res) => {
 }));
 app.get("/api/videos", (req, res) => res.json(listGeneratedVideos()));
 app.get("/api/bgm-files", (req, res) => res.json(listBgmFiles()));
+
+// ---------- Library(閲覧専用: 全run横断ビューア) ----------
+app.get("/api/library/runs", (req, res) => {
+  const { engine, since, q } = req.query;
+  if (engine && !PREFIXES[engine]) return res.status(400).json({ error: `unknown engine: ${engine}` });
+  res.json(listLibraryRuns({ engine, sinceMs: presetToSinceMs(since), q: q ? String(q) : "" }));
+});
+app.get("/api/library/runs/:engine/:runId", (req, res) => {
+  if (!PREFIXES[req.params.engine]) return res.status(400).json({ error: `unknown engine: ${req.params.engine}` });
+  res.json(libraryRunDetail(req.params.engine, req.params.runId));
+});
 app.get("/api/duration", wrap(async (req, res) => {
   res.json({ duration: await ffprobeDuration(String(req.query.p)) });
 }));

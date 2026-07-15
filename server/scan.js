@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { GENERATED_DIR, CASS_OUTPUT_DIR, BGM_DIR, PREFIXES } from "./config.js";
+import { GENERATED_DIR, CASS_OUTPUT_DIR, BGM_DIR, PREFIXES, PROMPT_DIR } from "./config.js";
 
 const MAX_LIST_ITEMS = 50;
 
@@ -169,6 +169,189 @@ export function expectedSegments(prefix, runId) {
   } catch {
     return [];
   }
+}
+
+// ============================================================
+// Library タブ用(閲覧専用)。Generate/Retry/Editが使う scanKeyframes/scanSegmentVideos
+// (_old系を意図的に除外した「現在有効な状態」)とは別に、_old系バックアップも含めた
+// run内の全ファイルを一覧するための専用スキャン。
+// ============================================================
+
+const KF_ALL_RE = /_seg(\d+)_kf(?:_old(\d+))?\.png$/;
+const SEG_VIDEO_ALL_RE = /_seg(\d+)_(.+?)(?:_old(\d+))?\.mp4$/;
+const FINAL_ALL_RE = /_final(_FHD)?(?:_old(\d+))?\.mp4$/;
+
+/** キーフレーム全件(_old込み)。variant: null(現行) | "oldN" */
+export function scanAllKeyframes(prefix, runId) {
+  if (prefix !== "i2v6" || !runId) return [];
+  const out = [];
+  for (const name of listDirSafe(GENERATED_DIR)) {
+    if (!name.startsWith(`${prefix}_${runId}_seg`)) continue;
+    const m = KF_ALL_RE.exec(name);
+    if (!m) continue;
+    const p = path.join(GENERATED_DIR, name);
+    out.push({ seg: parseInt(m[1], 10), path: p, mt: mtimeOf(p), variant: m[2] ? `old${m[2]}` : null });
+  }
+  out.sort((a, b) => a.seg - b.seg || (a.variant ? 1 : 0) - (b.variant ? 1 : 0));
+  return out;
+}
+
+/** セグメント動画全件(_old込み)。variant: null(現行) | "oldN" */
+export function scanAllSegmentVideos(prefix, runId) {
+  if (!runId) return [];
+  const out = [];
+  for (const name of listDirSafe(GENERATED_DIR)) {
+    if (!name.startsWith(`${prefix}_${runId}_seg`)) continue;
+    const m = SEG_VIDEO_ALL_RE.exec(name);
+    if (!m) continue;
+    const p = path.join(GENERATED_DIR, name);
+    out.push({
+      num: parseInt(m[1], 10), label: m[2], path: p, mt: mtimeOf(p),
+      variant: m[3] ? `old${m[3]}` : null,
+    });
+  }
+  out.sort((a, b) => a.num - b.num || (a.variant ? 1 : 0) - (b.variant ? 1 : 0));
+  return out;
+}
+
+/** final動画全件(final / final_FHD / final_oldN / final_FHD_oldN)。isFHD・variantで区別 */
+export function scanAllFinals(prefix, runId) {
+  if (!runId) return [];
+  const out = [];
+  for (const name of listDirSafe(GENERATED_DIR)) {
+    if (!name.startsWith(`${prefix}_${runId}_final`)) continue;
+    const m = FINAL_ALL_RE.exec(name);
+    if (!m) continue;
+    const p = path.join(GENERATED_DIR, name);
+    out.push({ path: p, mt: mtimeOf(p), isFHD: !!m[1], variant: m[2] ? `old${m[2]}` : null });
+  }
+  out.sort((a, b) => b.mt - a.mt);
+  return out;
+}
+
+/** CASS/output/ 内でこのrunのfinal由来のファイルを収集。
+ * ファイル名が `{prefix}_{runId}_final` から始まる全エントリを機械的に拾う——
+ * 二重リミックス(_remixed_remixed.mp4)や旧final(_old1)由来のリミックスも
+ * prefixマッチなので自然に含まれる。 */
+export function scanCassOutputs(prefix, runId) {
+  if (!runId) return { videos: [], stems: [] };
+  const prefixName = `${prefix}_${runId}_final`;
+  const videos = [];
+  const stems = [];
+  for (const name of listDirSafe(CASS_OUTPUT_DIR)) {
+    if (!name.startsWith(prefixName)) continue;
+    const full = path.join(CASS_OUTPUT_DIR, name);
+    if (name.endsWith(".mp4")) {
+      videos.push({ path: full, name, mt: mtimeOf(full) });
+    } else if (name.endsWith("_stems")) {
+      for (const kind of ["speech", "sfx", "music"]) {
+        const p = path.join(full, `${kind}.wav`);
+        if (fs.existsSync(p)) stems.push({ path: p, kind, group: name, mt: mtimeOf(p) });
+      }
+    }
+  }
+  videos.sort((a, b) => b.mt - a.mt);
+  stems.sort((a, b) => b.mt - a.mt);
+  return { videos, stems };
+}
+
+/** prompts.txt の生テキスト */
+export function readPromptsRaw(prefix, runId) {
+  try {
+    return fs.readFileSync(path.join(GENERATED_DIR, `${prefix}_${runId}_prompts.txt`), "utf-8");
+  } catch {
+    return "";
+  }
+}
+
+const LIBRARY_MAX_RESULTS = 200;
+
+/** "today"|"7d"|"30d"|"all"|undefined をエポックms(この時刻以降のみ対象)に変換。
+ * サーバー側で計算することでクライアントの時計ズレ・タイムゾーン差を気にしなくてよい。 */
+export function presetToSinceMs(preset) {
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+  switch (preset) {
+    case "today": {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    }
+    case "7d":
+      return now - 7 * DAY;
+    case "30d":
+      return now - 30 * DAY;
+    default:
+      return null; // "all" 含め無指定はフィルタなし
+  }
+}
+
+/** 全engine統合のrun一覧(mtime降順)。engine/sinceMs/q で絞り込み、件数急増に備え
+ * 上限 LIBRARY_MAX_RESULTS 件でスライスする(過去の全履歴を見る用途なので他の一覧のように
+ * 常時50件に切り詰めはしない——絞り込み後もなお超過する場合のみ安全弁として働く)。
+ * カード用のサムネイル存在チェックも、絞り込み後の対象だけに行うため件数が増えても軽い。 */
+export function listLibraryRuns({ engine, sinceMs, q } = {}) {
+  const engines = engine && PREFIXES[engine] ? [[engine, PREFIXES[engine]]] : Object.entries(PREFIXES);
+  const needle = q ? q.trim().toLowerCase() : "";
+  const all = [];
+  for (const [eng, prefix] of engines) {
+    const re = new RegExp(`^${prefix}_(\\d{8}_\\d{6})_prompts\\.txt$`);
+    for (const name of listDirSafe(GENERATED_DIR)) {
+      const m = re.exec(name);
+      if (!m) continue;
+      const runId = m[1];
+      const filePath = path.join(GENERATED_DIR, name);
+      const mt = mtimeOf(filePath);
+      if (sinceMs != null && mt < sinceMs) continue;
+
+      let source = "";
+      try {
+        const firstLine = fs.readFileSync(filePath, "utf-8").split("\n", 1)[0];
+        const sm = /^source:\s*(.+)/.exec(firstLine);
+        if (sm) source = sm[1].trim();
+      } catch {
+        /* unreadable */
+      }
+      if (needle && !runId.toLowerCase().includes(needle) && !source.toLowerCase().includes(needle)) continue;
+
+      const thumb = path.join(GENERATED_DIR, `${prefix}_${runId}_seg01_kf.png`);
+      all.push({
+        engine: eng, runId, source,
+        label: source ? `${runId} (${source})` : runId,
+        mt,
+        thumbnail: eng === "i2v" && fs.existsSync(thumb) ? thumb : null,
+      });
+    }
+  }
+  all.sort((a, b) => b.mt - a.mt);
+  const truncated = all.length > LIBRARY_MAX_RESULTS;
+  return { runs: all.slice(0, LIBRARY_MAX_RESULTS), truncated, total: all.length };
+}
+
+/** 指定runの全ファイル一覧(Libraryタブの右ペイン用) */
+export function libraryRunDetail(engine, runId) {
+  const prefix = PREFIXES[engine];
+  const header = readPromptsHeader(prefix, runId);
+  // 大元のプロンプト(prompt/配下、Write Promptタブで書いた/読み込んだ生テキスト)。
+  // prompts.txtはこれをPass0〜3で加工した結果なので別物——削除・リネーム済みなら取得できない。
+  let sourceRaw = null;
+  if (header.source) {
+    try {
+      sourceRaw = fs.readFileSync(path.join(PROMPT_DIR, header.source), "utf-8");
+    } catch {
+      sourceRaw = null;
+    }
+  }
+  return {
+    engine, runId,
+    header,
+    sourceRaw,
+    promptsRaw: readPromptsRaw(prefix, runId),
+    keyframes: scanAllKeyframes(prefix, runId),
+    segments: scanAllSegmentVideos(prefix, runId),
+    finals: scanAllFinals(prefix, runId),
+    cass: scanCassOutputs(prefix, runId),
+  };
 }
 
 /** run のスナップショット(Generate/Retryタブ表示用の一括取得) */
