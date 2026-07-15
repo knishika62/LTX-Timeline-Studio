@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, useJob, type Engine, type PromptFile } from "../api";
-import { FinalVideo, KeyframeGallery, LogPanel, SegRadio, SegVideoGrid, type KfDisplay, type SegDisplay } from "../common";
+import { FinalVideo, KeyframeGallery, LogPanel, NumberField, SegRadio, SegVideoGrid, type KfDisplay, type SegDisplay } from "../common";
 import { useSync } from "../sync";
 import { Icon } from "../Icon";
 
@@ -10,6 +10,8 @@ export default function Generate() {
   const [promptPath, setPromptPath] = useState("");
   const [orientation, setOrientation] = useState<"--h" | "--v">("--h");
   const [engine, setEngine] = useState<Engine>("i2v");
+  const [directMode, setDirectMode] = useState(false);
+  const [directSeconds, setDirectSeconds] = useState(5);
   const [jobId, setJobId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const { log, state, status } = useJob(jobId);
@@ -46,9 +48,15 @@ export default function Generate() {
       setMessage("(select a prompt file first)");
       return;
     }
+    if (directMode && (!Number.isFinite(directSeconds) || directSeconds <= 0)) {
+      setMessage("(direct seconds must be a positive number)");
+      return;
+    }
     setMessage("");
     try {
-      const r = await api<{ jobId: string }>("/api/generate", { json: { promptPath, orientation, engine } });
+      const r = await api<{ jobId: string }>("/api/generate", {
+        json: { promptPath, orientation, engine, ...(directMode ? { direct: directSeconds } : {}) },
+      });
       setJobId(r.jobId); // useJobがログ・表示を全リセットして新runの購読を開始する
     } catch (e) {
       setMessage(`Error: ${(e as Error).message}`);
@@ -95,6 +103,16 @@ export default function Generate() {
             onChange={setOrientation}
           />
           <SegRadio options={["i2v", "t2v"] as const} value={engine} onChange={setEngine} />
+          <label className={`check-chip ${directMode ? "checked" : ""}`} title="デバッグ用: LLMパイプラインを通さず、プロンプトファイルの生テキストをそのままComfyUIに渡す">
+            <input type="checkbox" checked={directMode} onChange={(e) => setDirectMode(e.target.checked)} disabled={running} />
+            Direct (skip LLM)
+          </label>
+          {directMode && (
+            <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <NumberField value={directSeconds} min={1} onChange={setDirectSeconds} style={{ width: 70 }} />
+              seconds
+            </label>
+          )}
           <button className="primary" onClick={start} disabled={running}>
             {running && <span className="spinner" />}Start generation
           </button>

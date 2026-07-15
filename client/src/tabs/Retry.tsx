@@ -153,8 +153,8 @@ export default function Retry() {
         )}
 
         {selected.length === 1 && editLoaded && (
-          <details className="log">
-            <summary>✏️ Edit prompt (seg{String(selected[0]).padStart(2, "0")}) — 保存済みプロンプトを直接編集してリトライ(必要な時だけ開く)</summary>
+          <details className="log" open>
+            <summary>✏️ Edit prompt (seg{String(selected[0]).padStart(2, "0")}) — 保存済みプロンプトを直接編集してリトライ</summary>
             <div className="panel" style={{ border: "none" }}>
               {engine === "i2v" && (
                 <label className="field">

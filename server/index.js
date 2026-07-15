@@ -85,10 +85,16 @@ app.get("/api/duration", wrap(async (req, res) => {
 
 // ---------- Generate / Retry ----------
 app.post("/api/generate", wrap(async (req, res) => {
-  const { promptPath, orientation = "--h", engine = "i2v" } = req.body;
+  const { promptPath, orientation = "--h", engine = "i2v", direct } = req.body;
   if (!promptPath) return res.status(400).json({ error: "select a prompt file first" });
   if (!PREFIXES[engine]) return res.status(400).json({ error: `unknown engine: ${engine}` });
-  const job = startGeneration(engine, { promptPath, orientation });
+  const extraArgs = [];
+  if (direct != null) {
+    const seconds = Number(direct);
+    if (!Number.isFinite(seconds) || seconds <= 0) return res.status(400).json({ error: "direct must be a positive number of seconds" });
+    extraArgs.push("--direct", String(seconds));
+  }
+  const job = startGeneration(engine, { promptPath, orientation, extraArgs });
   res.json({ jobId: job.id });
 }));
 
