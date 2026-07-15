@@ -52,16 +52,29 @@ export function NumberField({ value, onChange, min, max, style, className }: {
   );
 }
 
-/** 開閉式ログパネル(常時自動スクロール——Gradio版のsetIntervalハック相当をネイティブに) */
+/** 開閉式ログパネル(常時自動スクロール——Gradio版のsetIntervalハック相当をネイティブに)。
+ * 完了時に自動で閉じない: <details open={running}>のように running:true→false で
+ * 強制的に閉じる実装だと、その瞬間(ログ折りたたみ+最終動画等の新規描画が同時に起きる)に
+ * ブラウザが.app-bodyのスクロール可能領域を正しく再計算しないことがあり、「生成後、下まで
+ * スクロールできない」症状につながっていた(2026-07-15ユーザー報告・再現。reflow強制でも
+ * 解消しなかったため、そもそも自動で閉じない挙動に変更して回避)。新しいjob開始時のみ自動で
+ * 開き、完了しても閉じたままにはしない(ユーザーが手動で閉じるまで開いたまま)。 */
 export function LogPanel({ log, running }: { log: string; running: boolean }) {
   const preRef = useRef<HTMLPreElement>(null);
+  const [open, setOpen] = useState(true);
+  const wasRunning = useRef(running);
+  useEffect(() => {
+    if (running && !wasRunning.current) setOpen(true);
+    wasRunning.current = running;
+  }, [running]);
   useEffect(() => {
     const el = preRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [log]);
+
   if (!log) return null;
   return (
-    <details className="log" open={running}>
+    <details className="log" open={open} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>{running ? <><span className="spinner" />Log (running…)</> : "Log"}</summary>
       <pre ref={preRef}>{log}</pre>
     </details>

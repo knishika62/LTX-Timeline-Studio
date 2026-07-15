@@ -52,7 +52,13 @@ body {
 }
 @keyframes pulse { 50% { opacity: 0.3; } }
 
-.app-body { flex: 1; overflow-y: auto; padding: 20px; }
+/* flexアイテムは既定でmin-height:autoのため、overflow-y:autoを付けても「中身の高さ未満には
+   縮まない」——生成中にキーフレーム/セグメント/最終動画が段階的に増えるとスクロール可能領域が
+   正しく確定せず、下までスクロールできなくなることがある(2026-07-15ユーザー報告: Generate/CASS
+   で生成後、最終動画までスクロールできない。reloadすると直る=初回レイアウトは正しく計算される、
+   というユーザーの指摘と一致する典型的なflexboxの罠)。min-height:0で強制的に縮められるようにする。
+   overflow-anchorも念のため無効化(表示位置維持の自動補正が動的更新と競合しないように)。 */
+.app-body { flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none; padding: 20px; }
 .tab-page { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 
 .panel {
