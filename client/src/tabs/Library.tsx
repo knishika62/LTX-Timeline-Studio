@@ -217,7 +217,7 @@ export default function Library() {
                     <div className="audio-row" style={{ marginTop: 8 }}>
                       {detail.cass.stems.map((s) => (
                         <div key={s.path} className="audio-card">
-                          <div className="cap">{s.kind} — {s.group}</div>
+                          <div className="cap">{s.kind === "music" ? "BGM" : s.kind === "speech" ? "Voice" : s.kind}</div>
                           <AudioWithWaveform src={media(s.path, s.mt)} />
                         </div>
                       ))}
