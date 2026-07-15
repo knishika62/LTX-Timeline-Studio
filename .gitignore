@@ -6,7 +6,10 @@ generated/
 uploads/
 prompt/
 CASS/
-workflows/
+workflows/*
+!workflows/video.json
+!workflows/image.json
+!workflows/rtx_video_upscale.json
 .env
 __pycache__/
 .DS_Store

@@ -1,0 +1,76 @@
+{
+  "1": {
+    "inputs": {
+      "resize_type": "scale by multiplier",
+      "resize_type.scale": 1.5,
+      "quality": "ULTRA",
+      "images": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "RTXVideoSuperResolution",
+    "_meta": {
+      "title": "RTX Video Super Resolution"
+    }
+  },
+  "6": {
+    "inputs": {
+      "file": "LTX-2_00893-audio.mp4",
+      "video-preview": ""
+    },
+    "class_type": "LoadVideo",
+    "_meta": {
+      "title": "Load Video"
+    }
+  },
+  "7": {
+    "inputs": {
+      "video": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "GetVideoComponents",
+    "_meta": {
+      "title": "Get Video Components"
+    }
+  },
+  "8": {
+    "inputs": {
+      "fps": [
+        "7",
+        2
+      ],
+      "bit_depth": 8,
+      "images": [
+        "1",
+        0
+      ],
+      "audio": [
+        "7",
+        1
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "Create Video"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "video/ComfyUI",
+      "format": "auto",
+      "codec": "auto",
+      "video-preview": "",
+      "video": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "Save Video"
+    }
+  }
+}
