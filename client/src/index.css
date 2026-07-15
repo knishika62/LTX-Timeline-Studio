@@ -296,6 +296,8 @@ details.log pre {
 }
 .library-run-card:hover { border-color: var(--text-dim); }
 .library-run-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.library-run-card.confirm-delete { cursor: default; border-color: var(--danger); }
+.library-run-delete { flex-shrink: 0; align-self: center; padding: 6px 8px; }
 .library-run-thumb {
   width: 56px; height: 56px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--bg-input);
 }

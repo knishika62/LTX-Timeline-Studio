@@ -5,6 +5,7 @@ import {
 } from "../api";
 import { AudioWithWaveform, KeyframeGallery, SegRadio, SegVideoGrid } from "../common";
 import { useLightbox } from "../Lightbox";
+import { Icon } from "../Icon";
 
 function fmtDate(mt: number) {
   return new Date(mt).toLocaleString();
@@ -48,7 +49,45 @@ function VideoCardGrid({ title, items }: { title: string; items: { path: string;
   );
 }
 
-function RunCard({ run, active, onClick }: { run: LibraryRunInfo; active: boolean; onClick: () => void }) {
+function RunCard({ run, active, onClick, onDeleted }: {
+  run: LibraryRunInfo; active: boolean; onClick: () => void; onDeleted: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const doDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleting(true);
+    try {
+      await api(`/api/library/runs/${run.engine}/${run.runId}`, { method: "DELETE" });
+      onDeleted();
+    } catch (err) {
+      setDeleting(false);
+      setConfirming(false);
+      alert(`削除に失敗しました: ${(err as Error).message}`);
+    }
+  };
+
+  if (confirming) {
+    return (
+      <div className="library-run-card confirm-delete">
+        <div className="library-run-meta">
+          <div className="library-run-title">
+            <span className={`engine-badge ${run.engine}`}>{run.engine}</span>
+            {run.runId} を削除しますか？
+          </div>
+          <div className="library-run-source">関連ファイル(prompts.txt・keyframes・segments・final・CASS出力)が全て削除されます</div>
+          <div className="row" style={{ marginTop: 4 }}>
+            <button className="danger" onClick={doDelete} disabled={deleting}>
+              {deleting && <span className="spinner" />}削除
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); setConfirming(false); }} disabled={deleting}>キャンセル</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`library-run-card ${active ? "active" : ""}`} onClick={onClick}>
       {run.thumbnail ? (
@@ -64,6 +103,10 @@ function RunCard({ run, active, onClick }: { run: LibraryRunInfo; active: boolea
         <div className="library-run-source">{run.source || "(no source)"}</div>
         <div className="library-run-date">{fmtDate(run.mt)}</div>
       </div>
+      <button className="danger icon library-run-delete" title="Delete"
+        onClick={(e) => { e.stopPropagation(); setConfirming(true); }}>
+        <Icon name="trash" size={14} />
+      </button>
     </div>
   );
 }
@@ -179,6 +222,11 @@ export default function Library() {
                     run={r}
                     active={selected?.engine === r.engine && selected?.runId === r.runId}
                     onClick={() => setSelected({ engine: r.engine, runId: r.runId })}
+                    onDeleted={() => {
+                      setRuns((prev) => prev.filter((x) => !(x.engine === r.engine && x.runId === r.runId)));
+                      setTotal((t) => Math.max(0, t - 1));
+                      if (selected?.engine === r.engine && selected?.runId === r.runId) setSelected(null);
+                    }}
                   />
                 ))}
               </div>
@@ -206,10 +254,12 @@ export default function Library() {
                     : (detail.promptsRaw || "(prompts.txt が見つかりません)")}
                 </pre>
 
-                <KeyframeGallery keyframes={keyframes} />
-                <SegVideoGrid segments={segments} />
-                <VideoCardGrid title="Final variants" items={finals} />
+                {/* Promptより下は最終形に近い順(CASS出力→Final→Segments→Keyframes→分離音源、
+                    ユーザー指定 2026-07-15): 完成度の高いものから確認できるように */}
                 <VideoCardGrid title="CASS outputs" items={cassVideos} />
+                <VideoCardGrid title="Final variants" items={finals} />
+                <SegVideoGrid segments={segments} />
+                <KeyframeGallery keyframes={keyframes} />
 
                 {detail.cass.stems.length > 0 && (
                   <div>

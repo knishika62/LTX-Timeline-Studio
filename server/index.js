@@ -6,7 +6,7 @@ import multer from "multer";
 import { BASE_DIR, UPLOADS_DIR, PORT, PREFIXES } from "./config.js";
 import {
   listRuns, runSnapshot, listGeneratedVideos, listBgmFiles,
-  listLibraryRuns, libraryRunDetail, presetToSinceMs,
+  listLibraryRuns, libraryRunDetail, presetToSinceMs, deleteLibraryRun,
 } from "./scan.js";
 import {
   listPromptFiles, readPromptFile, savePromptFile, validatePrompt,
@@ -74,6 +74,10 @@ app.get("/api/library/runs", (req, res) => {
 app.get("/api/library/runs/:engine/:runId", (req, res) => {
   if (!PREFIXES[req.params.engine]) return res.status(400).json({ error: `unknown engine: ${req.params.engine}` });
   res.json(libraryRunDetail(req.params.engine, req.params.runId));
+});
+app.delete("/api/library/runs/:engine/:runId", (req, res) => {
+  if (!PREFIXES[req.params.engine]) return res.status(400).json({ error: `unknown engine: ${req.params.engine}` });
+  res.json(deleteLibraryRun(req.params.engine, req.params.runId));
 });
 app.get("/api/duration", wrap(async (req, res) => {
   res.json({ duration: await ffprobeDuration(String(req.query.p)) });

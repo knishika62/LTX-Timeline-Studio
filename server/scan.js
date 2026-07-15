@@ -354,6 +354,43 @@ export function libraryRunDetail(engine, runId) {
   };
 }
 
+/** 指定runの生成物一式を削除(Libraryタブの削除機能)。libraryRunDetailが返すのと同じ
+ * 4カテゴリ(keyframes/segments/finals/cass)+prompts.txt本体を対象にする——「右ペインで
+ * 見えているもの全部」が消える、という分かりやすい対応関係にする。元プロンプトファイル
+ * (prompt/配下)は対象外(他runでも再利用され得る、ユーザーが書いた入力のため)。 */
+export function deleteLibraryRun(engine, runId) {
+  const prefix = PREFIXES[engine];
+  const cass = scanCassOutputs(prefix, runId);
+  const files = [
+    path.join(GENERATED_DIR, `${prefix}_${runId}_prompts.txt`),
+    ...scanAllKeyframes(prefix, runId).map((k) => k.path),
+    ...scanAllSegmentVideos(prefix, runId).map((s) => s.path),
+    ...scanAllFinals(prefix, runId).map((f) => f.path),
+    ...cass.videos.map((v) => v.path),
+  ];
+  const dirs = [...new Set(cass.stems.map((s) => path.dirname(s.path)))];
+
+  let deletedFiles = 0;
+  for (const f of files) {
+    try {
+      fs.unlinkSync(f);
+      deletedFiles++;
+    } catch {
+      /* 既に無い等は無視 */
+    }
+  }
+  let deletedDirs = 0;
+  for (const d of dirs) {
+    try {
+      fs.rmSync(d, { recursive: true, force: true });
+      deletedDirs++;
+    } catch {
+      /* 既に無い等は無視 */
+    }
+  }
+  return { deletedFiles, deletedDirs };
+}
+
 /** run のスナップショット(Generate/Retryタブ表示用の一括取得) */
 export function runSnapshot(engine, runId) {
   const prefix = PREFIXES[engine];
