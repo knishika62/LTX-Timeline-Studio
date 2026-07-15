@@ -281,8 +281,12 @@ async def generate_t2v_video(prompt: str, width: int = 720, height: int = 1280, 
 
     keyframe_server_filename: 指定時はI2Vモードに切り替え(node 356=False)、node 269(LoadImage)に
     1stフレーム画像を設定する(T2V/I2Vは同一ワークフローでboolスイッチのみの違い)。未指定なら従来通りT2V。
+
+    ワークフローJSONは.envのT2V_VIDEO_ENGINEで差し替え可能(デフォルトvideo.json)。
+    指定したJSONが存在しない、またはノード構成が異なる場合のエラーはユーザー側の責任
+    (ここではバリデーションしない、KEYFRAME_WORKFLOW_JSONと同じ方針)。
     """
-    workflow = _load_workflow("video.json")
+    workflow = _load_workflow(cfg.T2V_VIDEO_ENGINE)
 
     workflow["373"]["inputs"]["value"] = prompt      # input1: テキストプロンプト
     workflow["366"]["inputs"]["value"] = width        # Width(px)

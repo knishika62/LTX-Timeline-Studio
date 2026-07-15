@@ -55,6 +55,12 @@ KEYFRAME_SIZE_SCALE: float = float(_get("KEYFRAME_SIZE_SCALE", "1.0"))
 # t2v_timeline_cliV6は常にgenerate_t2v_video()のまま(このフラグの影響を受けない)
 I2V_VIDEO_ENGINE: str = _get("I2V_VIDEO_ENGINE", "default")
 
+# generate_t2v_video()が読み込むComfyUIワークフローJSON(workflows/配下のファイル名)。
+# I2V_VIDEO_ENGINEとは別軸——こちらはKEYFRAME_WORKFLOW_JSONと同じ「ファイル名を直接差し替える」方式
+# (エンジン名でノード構成を切り替えるI2V_VIDEO_ENGINEとは違い、node ID体系は同一のまま前提)。
+# 指定JSONが存在しない、またはノード構成が異なる場合のエラーはユーザー側の責任(バリデーションしない、2026-07-16)
+T2V_VIDEO_ENGINE: str = _get("T2V_VIDEO_ENGINE", "video.json")
+
 IMAGE_PROMPT_PREFIX: str = _get(
     "IMAGE_PROMPT_PREFIX",
     "masterpiece, best quality, photorealistic, 8K, highly detailed, cinematic lighting, sharp focus, professional photography",
