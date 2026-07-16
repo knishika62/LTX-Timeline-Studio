@@ -21,6 +21,7 @@ Pass0/1/1.5/2のシステムプロンプト定数(`_CREATIVE_DIRECTOR_SYSTEM`等
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -1442,6 +1443,179 @@ async def _audit_shot_variety(segments: list[dict], directions: list[str], orien
     result: list[str] = []
     for seg, orig, aud in zip(segments, directions, audited):
         d = re.sub(r"^\[[^\]]*\]\s*", "", aud).strip() or orig
+        result.append(_enforce_shot_rules(seg["action"], d))
+    return result
+
+
+# ============================================================
+# Pass0/1/1.5 JSON構造化出力版(2026-07-16新設)
+#
+# 上の自由記述版(_parse_numbered_lines・_plan_creative_intent・_plan_shot_directions・
+# _audit_shot_variety)は無編集のまま残し、こちらは並行する別経路として追加する。
+# 理由: 自由記述版は「行の出現位置=セグメント番号」という前提でパースしており、
+# 紛れ込んだ数字付き行がずれを起こすと後続セグメント全部の帰属がずれる事故が
+# 実データで発覚した(_parse_numbered_linesのdocstring参照)。各要素にsegment番号を
+# 明示させるJSON配列にすれば、この位置依存の誤帰属というクラスのバグを構造的に排除できる。
+# 呼び出し元を新旧どちらの経路に向けるかだけで切り替えられるよう、関数・システムプロンプトとも
+# 完全に別名で用意する(問題があれば呼び出し元を旧関数に戻すだけで即座に復帰できる)。
+# ============================================================
+
+# 構造パース失敗時のリトライ上限。品質改善ループ用の_LINT_MAX_ATTEMPTS(5回・最終的に
+# best-effort受理)とは意味が異なる別concernのため使い回さない——こちらは「JSONの
+# フェンス混入・コメント混入等の軽微な形式ミス」を1回だけ厳しいリマインダーを添えて
+# 再送し、それでも直らなければ_auto_segment_narrativeと同じ方針(パース失敗は無言で
+# fallbackに逃げず、生テキストを添えてraiseする)を貫く。
+_JSON_PARSE_MAX_ATTEMPTS = 2
+
+
+def _extract_json_array_text(raw: str) -> str:
+    """Markdownコードフェンス(```json ... ```)が付いていれば剥がす。"""
+    text = raw.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
+
+
+def _parse_json_segments(raw: str, count: int) -> list[dict]:
+    """LLM出力のJSON配列をパースし、各要素の"segment"キーが1..countと過不足なく
+    一致することを検証する(要素の並び順は問わない、segmentキーで紐付ける)。
+    位置依存の誤帰属(_parse_numbered_linesが実際に踏んだ罠)を構造的に排除するため、
+    不正な出力は無言で埋めず、生テキストを添えてValueErrorを送出する
+    (_auto_segment_narrativeと同じ「パースは1回、失敗は即エラー」方針)。"""
+    text = _extract_json_array_text(raw)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        m = re.search(r"\[.*\]", raw, re.DOTALL)
+        if not m:
+            raise ValueError(f"JSON配列が見つかりません:\n{raw}")
+        try:
+            data = json.loads(m.group(0))
+        except json.JSONDecodeError as e:
+            raise ValueError(f"JSON構文エラー({e}):\n{raw}")
+
+    if not isinstance(data, list):
+        raise ValueError(f"JSON配列(list)ではありません:\n{raw}")
+
+    seen: set[int] = set()
+    for item in data:
+        if not isinstance(item, dict) or "segment" not in item:
+            raise ValueError(f"各要素に整数の\"segment\"キーが必要です:\n{raw}")
+        seen.add(item["segment"])
+
+    if seen != set(range(1, count + 1)):
+        raise ValueError(f"segment番号が1..{count}と一致しません(実際: {sorted(seen)}):\n{raw}")
+
+    return sorted(data, key=lambda d: d["segment"])
+
+
+async def _chat_json(
+    client: AsyncOpenAI, model: str, system_prompt: str, user_msg: str,
+    count: int, temperature: float, max_tokens: int,
+) -> list[dict]:
+    """JSON構造化出力Pass共通の呼び出し+パース+リトライ。1回目のパースに失敗したら、
+    より強い「JSON配列だけを出力せよ」というリマインダーを添えて1回だけ再送する
+    (_JSON_PARSE_MAX_ATTEMPTS回で打ち切り)。それでも失敗すれば最後のエラーをそのまま送出する。"""
+    messages: list[dict] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_msg},
+    ]
+    last_error: ValueError | None = None
+    for attempt in range(1, _JSON_PARSE_MAX_ATTEMPTS + 1):
+        resp = await client.chat.completions.create(
+            model=model, messages=messages, temperature=temperature, max_tokens=max_tokens,
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        if not raw:
+            raw = (getattr(resp.choices[0].message, "reasoning_content", None) or "").strip()
+        try:
+            return _parse_json_segments(raw, count)
+        except ValueError as e:
+            last_error = e
+            if attempt < _JSON_PARSE_MAX_ATTEMPTS:
+                messages.append({"role": "assistant", "content": raw})
+                messages.append({
+                    "role": "user",
+                    "content": "/no_think\nOutput ONLY the corrected JSON array. No markdown code "
+                                "fences, no commentary, no explanation before or after it.",
+                })
+    assert last_error is not None
+    raise last_error
+
+
+async def _plan_creative_intent_json(
+    global_desc: str, segments: list[dict], orientation: str, system_prompt: str,
+) -> list[dict]:
+    """Pass0(JSON版): _plan_creative_intentの自由記述版と対になる新経路。
+    Creative Director/State Trackerどちらの呼び出しにも使う(system_promptで切替、旧版と同じ構造)。"""
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    seg_list = "\n".join(
+        f"{i}. ({seg['duration']}s) {seg['action']}"
+        for i, seg in enumerate(segments, 1)
+    )
+    orient_note = "16:9 widescreen landscape" if orientation == "horizontal" else "9:16 vertical portrait"
+    user_msg = (
+        f"/no_think\n"
+        f"## Video style / setting\n{global_desc}\n\n"
+        f"## Orientation\n{orient_note}\n\n"
+        f"## Segments ({len(segments)} total)\n{seg_list}"
+    )
+    return await _chat_json(client, cfg.LLM_MODEL, system_prompt, user_msg, len(segments), 0.8, 4096)
+
+
+async def _plan_shot_directions_json(
+    global_desc: str, segments: list[dict], orientation: str, intents: list[str], system_prompt: str,
+) -> list[str]:
+    """Pass1(JSON版): _plan_shot_directionsの自由記述版と対になる新経路。"""
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    seg_list = "\n".join(
+        f"{i}. ({seg['duration']}s) {seg['action']}"
+        + (f"\n   Creative intent: {intent}" if intent else "")
+        for i, (seg, intent) in enumerate(zip(segments, intents), 1)
+    )
+    orient_note = (
+        "16:9 WIDESCREEN LANDSCAPE — wide lateral space: LATERAL crossing and horizontal compositions work well"
+        if orientation == "horizontal" else
+        "9:16 VERTICAL PORTRAIT — very narrow lateral space: LATERAL crossing is FORBIDDEN; "
+        "for walking use toward/away from lens, tracking follow, or tight patterns; "
+        "favor vertical compositions (low/high angle, sky above and ground below)"
+    )
+    user_msg = (
+        f"/no_think\n"
+        f"## Video style / setting\n{global_desc}\n\n"
+        f"## Orientation\n{orient_note}\n\n"
+        f"## Segments ({len(segments)} total)\n{seg_list}"
+    )
+    items = await _chat_json(client, cfg.LLM_MODEL, system_prompt, user_msg, len(segments), 0.8, 1024)
+    raw_dirs = [(d.get("direction") or "").strip() or "eye level, static handheld, medium" for d in items]
+    return [_enforce_shot_rules(seg["action"], d) for seg, d in zip(segments, raw_dirs)]
+
+
+async def _audit_shot_variety_json(
+    segments: list[dict], directions: list[str], orientation: str, system_prompt: str,
+) -> list[str]:
+    """Pass1.5(JSON版): _audit_shot_varietyの自由記述版と対になる新経路。
+    directionが独立したJSONフィールドになるため、旧版が対処していた「actionタグの
+    漏れ混入」(re.sub `^\\[[^\\]]*\\]\\s*`)は構造的に発生しなくなり不要。
+    ただし「空/パース対象外のセグメントは監査前のdirectionを維持する」フォールバックは維持する。"""
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    dir_list = "\n".join(
+        f"{i}. action: {seg['action']} | current direction: {d}"
+        for i, (seg, d) in enumerate(zip(segments, directions), 1)
+    )
+    orient_note = (
+        "16:9 WIDESCREEN LANDSCAPE" if orientation == "horizontal"
+        else "9:16 VERTICAL PORTRAIT (no lateral crossing patterns)"
+    )
+    user_msg = (
+        f"/no_think\n"
+        f"## Orientation\n{orient_note}\n\n"
+        f"## Shot list ({len(segments)} segments)\n{dir_list}"
+    )
+    items = await _chat_json(client, cfg.LLM_MODEL, system_prompt, user_msg, len(segments), 0.4, 1024)
+    result: list[str] = []
+    for seg, orig, item in zip(segments, directions, items):
+        d = (item.get("direction") or "").strip() or orig
         result.append(_enforce_shot_rules(seg["action"], d))
     return result
 

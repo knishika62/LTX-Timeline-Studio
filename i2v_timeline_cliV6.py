@@ -61,6 +61,7 @@ from timeline_common import (
     _GENDER_WORDS, _GENDER_SYNONYMS, _AGE_PATTERN_RE, _character_tokens_missing,
     _extract_state_from_intent,
     _plan_creative_intent, _plan_shot_directions, _audit_shot_variety, _write_scene_description,
+    _plan_creative_intent_json, _plan_shot_directions_json, _audit_shot_variety_json,
 )
 import t2v_timeline_cliV6 as _t2v_pass3
 
@@ -260,6 +261,103 @@ NEVER change:
 For stationary actions (touching, feeding, sipping, working at an overhead target) change the CAMERA's side (profile, over-shoulder, behind at an angle) rather than the subject's pose.
 
 Output: ONLY the full numbered list, one line per segment, same format as the input, nothing else.\
+"""
+
+# ============================================================
+# Pass0/1/1.5 JSON構造化出力版のシステムプロンプト(2026-07-16新設)。
+# 上の自由記述版と本文のルールは同一で、末尾の出力フォーマット指定だけをJSON契約に
+# 書き換えている。呼び出し元(_json関数群)はこちらを使う。旧版は無編集のまま残す。
+# ============================================================
+
+_CREATIVE_DIRECTOR_SYSTEM_JSON = """\
+You are a creative director reviewing a short-video timeline before shooting.
+Look at the ENTIRE timeline as ONE film: decide the narrative arc and what each shot must communicate to keep the viewer engaged.
+
+For each segment decide:
+- INTENT: this shot's role in the whole piece (opening hook / character charm / environment texture / interaction warmth / rhythm change / finale payoff) and what it must communicate
+- HIGHLIGHT: the single most eye-catching visual element to emphasize in this shot
+- TEMPO: calm or lively
+
+RULES:
+- The FIRST segment must hook the viewer instantly
+- The LAST segment must land as the finale/payoff
+- Spread at least 2-3 "lively" segments through the timeline — never make everything calm
+- Create contrast between adjacent segments (scale, energy, subject focus)
+- Keep each line short and concrete
+
+Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no commentary before or after it. Each object must have exactly these keys: "segment" (integer, 1-based), "intent", "highlight", "tempo" (the string "calm" or "lively"). Example for a 2-segment timeline:
+[
+  {"segment": 1, "intent": "...", "highlight": "...", "tempo": "calm"},
+  {"segment": 2, "intent": "...", "highlight": "...", "tempo": "lively"}
+]\
+"""
+
+_STATE_TRACKER_SYSTEM_JSON = """\
+You are a continuity tracker for a short-video timeline. This is your ONLY job — you do not judge creative quality, only track facts.
+
+For EACH segment, decide whether the scene's persistent LOCATION (name the actual place, e.g. "residential alley", "kitchen"), time-of-day/lighting, weather, or ANYTHING about the subject's current appearance beyond her fixed identity (outfit, accessories, hairstyle, or anything else she is currently wearing/carrying/styled with) is DIFFERENT from the immediately preceding segment.
+
+For each segment, the "state" value must be EXACTLY ONE of the following two things — nothing else is valid:
+(a) The literal text "NO CHANGE" — use this if and only if location, time-of-day/lighting, weather, and appearance are ALL identical to the previous segment.
+(b) A COMPLETE description covering location, time-of-day/lighting, weather, and everything about her current appearance — required for segment 1 (establish the baseline from the character/location/style reference), and required for any segment where the action explicitly changes any of these (e.g. "goes to sleep" → night; "changes into pajamas" → new outfit; "steps outside into the rain" → weather changes; "walks into the cafe" → location changes).
+
+STRICT RULES:
+- NEVER write a partial description, a reference ("same as segment 5", "same as before"), an abbreviation, or a placeholder ("none mentioned") — only options (a) or (b) above exist. This also includes paraphrased "nothing changed" sentences like "Same location and time; same outfit and accessories" — that is NOT option (b), it names no actual garment/location words and is just option (a) in disguise. If nothing changed, write the literal text "NO CHANGE" and nothing else.
+- When you write a full description (b), restate EVERYTHING that is still true, not just what changed — the next segment's "NO CHANGE" depends on this being complete.
+- This matters most for changes that are easy to miss: once night falls, every later segment stays night until something explicitly says otherwise (sunrise, an alarm, etc.) — the same for weather, for a change of clothes, and for location (a tight/close-up shot still happens somewhere — always name it, even when the shot itself barely shows background).
+- ⚠️ GET THE TIMING RIGHT: if a segment's OWN action contains the change (e.g. segment 4 says "goes to sleep"), the NEW state applies STARTING AT segment 4 itself — never delay it to segment 5.
+- ⚠️ ONE-DIRECTIONAL: the rule above only forbids DELAYING a stated change to a later segment than the one whose action actually describes it. It does NOT mean applying the change EARLIER. You can see every segment's action at once in the list below — a later segment's action may already describe a new outfit, location, or time-of-day. Do NOT anticipate it. Every segment BEFORE the one whose action states the change must still carry the OLD state (or "NO CHANGE"), even though the future change is visible to you in the list.
+
+Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no commentary before or after it. Each object must have exactly these keys: "segment" (integer, 1-based), "state". Example for a 4-segment timeline:
+[
+  {"segment": 1, "state": "A living room, daytime, plain everyday top and pants, hair down."},
+  {"segment": 2, "state": "NO CHANGE"},
+  {"segment": 3, "state": "NO CHANGE"},
+  {"segment": 4, "state": "A kitchen, evening, different top, hair tied back."}
+]\
+"""
+
+_SHOT_DIRECTOR_SYSTEM_JSON = _SHOT_DIRECTOR_SYSTEM.replace(
+    "Output: ONLY a numbered list, one line per segment, nothing else. Format exactly:\n"
+    "1. [full camera direction description]\n"
+    "2. [full camera direction description]\n"
+    "...",
+    'Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no '
+    'commentary before or after it. Each object must have exactly these keys: "segment" (integer, '
+    '1-based), "direction" (the full camera direction description). Example:\n'
+    '[\n'
+    '  {"segment": 1, "direction": "..."},\n'
+    '  {"segment": 2, "direction": "..."}\n'
+    ']',
+)
+
+_VARIETY_AUDITOR_SYSTEM_JSON = """\
+You are a shot-variety auditor reviewing a complete shot list before filming.
+Input: a JSON-described shot list, one line per segment listing the segment's action and its current camera direction.
+
+CHECK ACROSS ALL SEGMENTS:
+1. FACING — classify each shot's subject facing relative to camera: frontal / three-quarter left / three-quarter right / left profile / right profile / back or over-shoulder.
+   - NEVER allow 3 or more consecutive frontal-facing shots
+   - Use at least 3 different facing categories across the timeline
+   - Include at least one profile or back/over-shoulder shot in every 4 segments
+2. CAMERA POSITION — vary front / side / behind / low / high; never the same side 3 times in a row.
+3. APPROACH — at most ONE shot in the whole timeline where the subject walks toward the camera.
+4. WALKING SIDE-VIEW — if 3 or more segments involve walking, AT LEAST ONE of them must film the subject from the SIDE while walking (lateral crossing in 16:9, or handheld lateral tracking alongside in either orientation). If none exists, convert one walking segment to a side-view lateral shot — any walking segment EXCEPT the first segment and the last segment of the timeline.
+
+REWRITE only the directions needed to fix violations; copy all others verbatim.
+When you rewrite, state the new facing EXPLICITLY and CONCRETELY (e.g. "seen in right profile from the side, her face turned away from the lens", "framed from behind her left shoulder").
+
+NEVER change:
+- shot scale (a close-up stays a close-up)
+- "feet only" / tracking / static designations
+- the action content itself
+For stationary actions (touching, feeding, sipping, working at an overhead target) change the CAMERA's side (profile, over-shoulder, behind at an angle) rather than the subject's pose.
+
+Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no commentary before or after it. Each object must have exactly these keys: "segment" (integer, 1-based), "direction" (rewritten if it violated a rule above, otherwise copied verbatim from the input). Example:
+[
+  {"segment": 1, "direction": "..."},
+  {"segment": 2, "direction": "..."}
+]\
 """
 
 # 失敗モードチェックリスト(実生成で観測した事故の集約、Pass4 Linterが使用)。
@@ -1371,7 +1469,7 @@ async def _generate_ground_truth(
 async def _process_segment_phase1(
     i: int, seg: dict, direction: str, intent: str, total: int,
     global_desc: str, segments: list[dict], ambience: str, style_tail: str,
-    orientation: str, character_line: str, llm_sem: asyncio.Semaphore,
+    orientation: str, character_line: str, llm_sem: asyncio.Semaphore, state: str,
 ) -> dict:
     """フェーズ1: 1セグメント完結のテキスト確定処理(Pass2→Pass3(基準テキスト、t2vのPass3流用)→
     Pass3a/3b)。キーフレーム画像生成は含まない。
@@ -1379,7 +1477,11 @@ async def _process_segment_phase1(
     `prompts.txt`をキーフレーム画像生成の前に書き出せるようフェーズ2(画像生成)から
     分離した(2026-07-10、ユーザー指摘: テキストが生成前に確定しているなら先に出してほしい)。
     他セグメントの結果に依存しないため`main()`から`asyncio.gather()`で並列実行できるよう
-    切り出した(2026-07-07)。LLM呼び出し(Pass2/Pass3a/3b)は`llm_sem`(最大4)で同時実行数を絞る。"""
+    切り出した(2026-07-07)。LLM呼び出し(Pass2/Pass3a/3b)は`llm_sem`(最大4)で同時実行数を絞る。
+
+    `state`はPass0bで確定済みのSTATE文字列を呼び出し元から直接渡す(2026-07-16、JSON経路)。
+    `intent`は引き続きPass2の文脈用に"INTENT: ... | STATE: ..."の結合文字列を渡すが、
+    Pass3向けの`current_state`はここでは`_extract_state_from_intent`による再抽出を経由しない。"""
     print(f"[i2v-tl6] [{i}/{total}] {seg['duration']}s  ({direction})")
     reserved = _reserved_props_for(segments, i - 1)
     print(f"[i2v-tl6]   [{i}/{total}] Pass2: シーン記述中(LLM)...")
@@ -1402,7 +1504,7 @@ async def _process_segment_phase1(
         print(f"[i2v-tl6]   [{i}/{total}] Pass2 未解消(最大{_LINT_MAX_ATTEMPTS}回試行後): {reject}")
     print(f"[i2v-tl6]   [{i}/{total}] scene:\n{scene_desc}")
 
-    current_state = _extract_state_from_intent(intent)
+    current_state = state
     print(f"[i2v-tl6]   [{i}/{total}] Pass3: 基準テキスト生成中(LLM, t2vのPass3を流用)...")
     async with llm_sem:
         ground_truth = await _generate_ground_truth(scene_desc, global_desc, ambience, seg["duration"], orientation, direction, character_line, seg["action"], reserved, current_state)
@@ -1583,12 +1685,15 @@ async def main() -> None:
     print(f"[i2v-tl6]   style: {style_tail}")
 
     # Pass0a/0b: 創造(INTENT/HIGHLIGHT/TEMPO)と継続性記録(STATE)を専属パスに分けて並列実行
-    # (2026-07-10、V6。互いに依存しないため並列でもレイテンシはほぼ変わらない)
+    # (2026-07-10、V6。互いに依存しないため並列でもレイテンシはほぼ変わらない)。
+    # JSON構造化出力版(2026-07-16): segment番号を明示させ、位置依存の誤帰属を排除する
     print(f"\n[i2v-tl6] Pass0a/0b クリエイティブディレクター+Stateトラッカー: 並列計画中({len(segments)}セグメント)...")
-    creative_lines, state_lines_raw = await asyncio.gather(
-        _plan_creative_intent(global_desc, segments, orientation, _CREATIVE_DIRECTOR_SYSTEM),
-        _plan_creative_intent(global_desc, segments, orientation, _STATE_TRACKER_SYSTEM),
+    creative_json, state_json = await asyncio.gather(
+        _plan_creative_intent_json(global_desc, segments, orientation, _CREATIVE_DIRECTOR_SYSTEM_JSON),
+        _plan_creative_intent_json(global_desc, segments, orientation, _STATE_TRACKER_SYSTEM_JSON),
     )
+    creative_lines = [f"INTENT: {d['intent']} | HIGHLIGHT: {d['highlight']} | TEMPO: {d['tempo']}" for d in creative_json]
+    state_lines_raw = [d["state"] for d in state_json]
     resolved_states = _resolve_state_continuity(state_lines_raw)
     intents = [f"{c} | STATE: {s}" for c, s in zip(creative_lines, resolved_states)]
     for i, (seg, intent) in enumerate(zip(segments, intents), 1):
@@ -1597,14 +1702,14 @@ async def main() -> None:
 
     # Pass1: ショットディレクターが構図を一括計画(intentを参照)
     print(f"[i2v-tl6] Pass1 ショットディレクター: 構図を計画中...")
-    shot_directions = await _plan_shot_directions(global_desc, segments, orientation, intents, _SHOT_DIRECTOR_SYSTEM)
+    shot_directions = await _plan_shot_directions_json(global_desc, segments, orientation, intents, _SHOT_DIRECTOR_SYSTEM_JSON)
     for i, (seg, direction) in enumerate(zip(segments, shot_directions), 1):
         print(f"[i2v-tl6]   [{i:02d}] {seg['label']:>14}  {direction}")
     print()
 
     # Pass1.5: 多様性監査(向き・カメラ位置・接近の単調さを俯瞰チェックして書き直し)
     print(f"[i2v-tl6] Pass1.5 多様性監査: 向き・カメラ位置をチェック中...")
-    audited = await _audit_shot_variety(segments, shot_directions, orientation, _VARIETY_AUDITOR_SYSTEM)
+    audited = await _audit_shot_variety_json(segments, shot_directions, orientation, _VARIETY_AUDITOR_SYSTEM_JSON)
     audited = _enforce_walking_lateral(segments, audited, orientation, "[i2v-tl6]")
     for i, (before, after) in enumerate(zip(shot_directions, audited), 1):
         mark = "＊" if after != before else " "
@@ -1630,8 +1735,8 @@ async def main() -> None:
     # ユーザー指摘: テキストが生成前に確定しているなら先に出してほしい)
     phase1_tasks = [
         _process_segment_phase1(i, seg, direction, intent, len(segments), global_desc, segments,
-                                 ambience, style_tail, orientation, character_line, llm_sem)
-        for i, (seg, direction, intent) in enumerate(zip(segments, shot_directions, intents), 1)
+                                 ambience, style_tail, orientation, character_line, llm_sem, state)
+        for i, (seg, direction, intent, state) in enumerate(zip(segments, shot_directions, intents, resolved_states), 1)
     ]
     phase1_results = await asyncio.gather(*phase1_tasks)
 
