@@ -1,4 +1,4 @@
-"""ACE-Step-1.5 API(192.168.11.200:8001)でインストゥルメンタルBGMを生成するCLI。
+"""ACE-Step-1.5 API(localhost:8001)でインストゥルメンタルBGMを生成するCLI。
 
 CASS/process.sh(音声分離+BGMミックス)へ渡すBGM素材を、手動Suno生成の代わりに
 自動生成するための独立ツール。パイプライン本体(pipeline_server.py)・v6_harness.py

@@ -15,16 +15,16 @@ def _get(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
 
-LLM_BASE_URL: str = _get("LLM_BASE_URL", "http://192.168.11.200:1234/v1")
-LLM_MODEL: str = _get("LLM_MODEL", "qwen3.6-27b-uncensored-heretic-v2-native-mtp-preserved")
+LLM_BASE_URL: str = _get("LLM_BASE_URL", "http://localhost:1234/v1")
+LLM_MODEL: str = _get("LLM_MODEL", "Qwen3.6-35B-A3B-NVFP4")
 LLM_API_KEY: str = _get("LLM_API_KEY", "dummy")
 
 COMFYUI_LLM_BASE_URL: str = _get("COMFYUI_LLM_BASE_URL", LLM_BASE_URL)
 COMFYUI_LLM_MODEL: str = _get("COMFYUI_LLM_MODEL", LLM_MODEL)
 COMFYUI_LLM_API_KEY: str = _get("COMFYUI_LLM_API_KEY", "")
 
-COMFYUI_IMAGE_URL: str = _get("COMFYUI_IMAGE_URL", "http://192.168.11.200:8188")
-COMFYUI_VIDEO_URL: str = _get("COMFYUI_VIDEO_URL", "http://192.168.11.225:8188")
+COMFYUI_IMAGE_URL: str = _get("COMFYUI_IMAGE_URL", "http://localhost:8188")
+COMFYUI_VIDEO_URL: str = _get("COMFYUI_VIDEO_URL", "http://localhost:8188")
 
 # i2v_timeline_cli のキーフレーム生成用: image.json の lora_01(キャラLoRA)の上書き設定。
 # 名前が空なら image.json の値をそのまま使用。強度 -1 はそのまま、0 でLoRA無効化(任意キャラ生成用)
@@ -70,5 +70,5 @@ GENERATED_DIR: Path = _BASE_DIR / "generated"
 GENERATED_DIR.mkdir(exist_ok=True)
 
 # ACE-Step-1.5 BGM生成APIサーバー(bgm_generate_cli.py専用、パイプライン本体には未統合、2026-07-13)
-ACESTEP_URL: str = _get("ACESTEP_URL", "http://192.168.11.200:8001")
+ACESTEP_URL: str = _get("ACESTEP_URL", "http://localhost:8001")
 ACESTEP_MODEL: str = _get("ACESTEP_MODEL", "acestep-v15-sft")
