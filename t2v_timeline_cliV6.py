@@ -25,9 +25,9 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
-import pipeline_config as cfg
-from comfyui_client import generate_t2v_video
-from timeline_common import (
+from modules import pipeline_config as cfg
+from modules.comfyui_client import generate_t2v_video
+from modules.timeline_common import (
     _fmt_elapsed,
     _fmt_duration,
     _parse_prompt, _seg_video_path, _concat_segments, _run_upscale,

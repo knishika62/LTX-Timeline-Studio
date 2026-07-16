@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from openai import AsyncOpenAI
 
-import pipeline_config as cfg
+from . import pipeline_config as cfg
 
 _KREA2_EXPAND_SYSTEM = """\
 You are a minimal touch-up editor for a keyframe photo-caption prompt fed to the

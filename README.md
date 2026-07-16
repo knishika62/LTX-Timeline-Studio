@@ -113,7 +113,8 @@ npm start         # → http://localhost:7864
 
 | パス | 実体 | 説明 |
 |---|---|---|
-| `t2v_timeline_cliV6.py` / `i2v_timeline_cliV6.py` / `timeline_common.py` / `comfyui_client.py` / `pipeline_config.py` / `prompt_generator.py` / `bgm_generate_cli.py` | 実ファイル | 生成ロジック本体 |
+| `t2v_timeline_cliV6.py` / `i2v_timeline_cliV6.py` / `bgm_generate_cli.py` | 実ファイル | CLIエントリポイント(`python -m`で直接起動) |
+| `modules/` (`timeline_common.py` / `comfyui_client.py` / `pipeline_config.py` / `prompt_generator.py`) | 実ディレクトリ | 上記CLIから呼ばれる共有ロジック(単体では実行しない) |
 | `workflows/` `CASS/` | 実ディレクトリ | ComfyUIワークフロー・音声分離ツール一式 |
 | `prompt/` `generated/` `uploads/` `CASS/{output,bgm,input,tmp}/` | 実ディレクトリ | 作業・入出力はすべてこのフォルダ直下 |
 | `.env` | 実ファイル | ハーネス・CLI共通で必要なキーを保持。編集は即時反映(再起動不要) |
@@ -253,4 +254,4 @@ Pass0(Creative Director)→Pass1(Shot Director)→Pass1.5(Variety Auditor)→Pas
 - **髪型やメガネは①(不変)と③(その都度)のどちらの管轄か、最初は曖昧だった。** ③側に置いていた頃は、変化が無い場面で細かい情報だけがすっぽり抜け落ちる事故が起きた。「これは本当に場面ごとに変わるものか、それともこの人自身の一部か」と問い直して①へ移したところで解消した
 - **⑦は、i2v用の指示文をゼロから新規に書かせるのをやめている。** 短い予算(40〜80語)の中に全部詰め込ませようとすると情報が競合して脱落しやすい。t2v向けに既に作った確実性の高い文章を土台にして、そこから必要な部分だけ抜き出す方式にしたら安定した
 
-それぞれのロジックの実装は `timeline_common.py`(前半・t2v/i2v共通部分)と `t2v_timeline_cliV6.py` / `i2v_timeline_cliV6.py`(後半・エンジン別の変換部分)にある。
+それぞれのロジックの実装は `modules/timeline_common.py`(前半・t2v/i2v共通部分)と `t2v_timeline_cliV6.py` / `i2v_timeline_cliV6.py`(後半・エンジン別の変換部分)にある。

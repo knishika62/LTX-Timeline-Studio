@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 
-_BASE_DIR = Path(__file__).parent
+_BASE_DIR = Path(__file__).parent.parent  # modules/の1つ上=リポジトリ直下(2026-07-16、modules/移動時に対応)
 load_dotenv(_BASE_DIR / ".env")
 
 

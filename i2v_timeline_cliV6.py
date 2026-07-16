@@ -31,10 +31,10 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
-import pipeline_config as cfg
-import prompt_generator
-from comfyui_client import generate_image, generate_t2v_video, generate_video_10e, generate_video_refine_ltx23, upload_image_to_comfyui
-from timeline_common import (
+from modules import pipeline_config as cfg
+from modules import prompt_generator
+from modules.comfyui_client import generate_image, generate_t2v_video, generate_video_10e, generate_video_refine_ltx23, upload_image_to_comfyui
+from modules.timeline_common import (
     _fmt_elapsed,
     _fmt_duration,
     _parse_prompt, _seg_video_path, _concat_segments, _run_upscale,

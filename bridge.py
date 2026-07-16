@@ -29,7 +29,7 @@ def _fail(msg: str) -> None:
 
 
 def cmd_parse_prompt(path: str) -> None:
-    from timeline_common import _parse_prompt
+    from modules.timeline_common import _parse_prompt
 
     try:
         text = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
@@ -57,7 +57,7 @@ def cmd_parse_prompts_txt(engine: str, path: str) -> None:
 
 
 def cmd_concat() -> None:
-    from timeline_common import _concat_segments
+    from modules.timeline_common import _concat_segments
 
     try:
         req = json.loads(sys.stdin.read())
@@ -75,7 +75,7 @@ def cmd_concat() -> None:
 
 
 def cmd_upscale(video: str) -> None:
-    from comfyui_client import upload_video_to_comfyui, upscale_video
+    from modules.comfyui_client import upload_video_to_comfyui, upscale_video
 
     src = Path(video)
     if not src.exists():

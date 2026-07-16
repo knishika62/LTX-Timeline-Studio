@@ -10,7 +10,7 @@ from pathlib import Path
 
 import httpx
 
-import pipeline_config as cfg
+from . import pipeline_config as cfg
 
 POLL_INTERVAL_S = 3
 IMAGE_TIMEOUT_S = 900

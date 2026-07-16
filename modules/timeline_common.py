@@ -28,8 +28,8 @@ from pathlib import Path
 
 from openai import AsyncOpenAI
 
-import pipeline_config as cfg
-from comfyui_client import upload_video_to_comfyui, upscale_video
+from . import pipeline_config as cfg
+from .comfyui_client import upload_video_to_comfyui, upscale_video
 
 # Pass4系lint(_lint_ltx_prompt・KF1/KF2・motion側lint)の最大リトライ回数。
 # 従来は「検出→fix1回→残り違反はログのみ」で、fixerが従わなければ直っていないテキストが

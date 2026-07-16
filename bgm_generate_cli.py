@@ -22,7 +22,7 @@ from pathlib import Path
 
 import httpx
 
-import pipeline_config as cfg
+from modules import pipeline_config as cfg
 
 _POLL_INTERVAL_S = 5.0
 _POLL_TIMEOUT_S = 600.0
