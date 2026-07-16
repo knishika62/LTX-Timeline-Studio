@@ -56,6 +56,7 @@ BGM生成機能は [ACE-Step-1.5](https://github.com/ace-step/ACE-Step-1.5) のA
 
 - ACE-Step-1.5側で `start_api_server.bat`(Windows)または `start_api_server.sh`(Linux/Mac)を起動しておくこと
 - `.env` の `ACESTEP_URL`(APIサーバーのURL)・`ACESTEP_MODEL` をそのサーバーに合わせて設定
+- ハーネス経由では`bridge.py`がライブラリとして呼び出すため意識不要だが、**ハーネスを使わずCLI単体でBGMを生成する場合は`bgm_generate_cli.py`を直接実行する**(`python -m bgm_generate_cli --help`でオプション確認)
 
 ## ComfyUIの設定
 
