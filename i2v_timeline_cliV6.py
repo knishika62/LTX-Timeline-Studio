@@ -37,7 +37,7 @@ from comfyui_client import generate_image, generate_t2v_video, generate_video_10
 from timeline_common import (
     _fmt_elapsed,
     _fmt_duration,
-    _parse_prompt, _parse_numbered_lines, _seg_video_path, _concat_segments, _run_upscale,
+    _parse_prompt, _seg_video_path, _concat_segments, _run_upscale,
     _split_direct_prompt, _write_direct_prompts_txt,
     _auto_segment_narrative, _LINT_MAX_ATTEMPTS,
     _has_word, _animals_in, _stem, _ANIMAL_ABSENT_RE,
@@ -54,20 +54,23 @@ from timeline_common import (
     _WALK_KEYWORDS, _WALK_DIRECTION_RE, _LATERAL_RE, _enforce_walking_lateral, _enforce_shot_rules,
     _CHAR_STOPWORDS, _FOOTWEAR_ITEMS, _LOWER_BODY_ITEMS,
     _extract_character_line,
-    _resolve_state_continuity,
     _trim_character_for_scale,
     _GARMENT_WORD_RE, _garments_missing, _state_details_missing, _enforce_garments_present,
     _enforce_realism_default, _ANIME_STYLE_RE, _REALISM_HINT_RE,
     _GENDER_WORDS, _GENDER_SYNONYMS, _AGE_PATTERN_RE, _character_tokens_missing,
-    _extract_state_from_intent,
-    _plan_creative_intent, _plan_shot_directions, _audit_shot_variety, _write_scene_description,
+    _write_scene_description,
     _plan_creative_intent_json, _plan_shot_directions_json, _audit_shot_variety_json,
     _resolve_state_continuity_json, _flatten_state,
 )
 import t2v_timeline_cliV6 as _t2v_pass3
 
 
-_CREATIVE_DIRECTOR_SYSTEM = """\
+# ============================================================
+# Pass0/1/1.5 JSON構造化出力版のシステムプロンプト。
+# 旧・自由記述版(番号付きリストをパースする方式)は2026-07-16に削除済み(git履歴参照)。
+# ============================================================
+
+_CREATIVE_DIRECTOR_SYSTEM_JSON = """\
 You are a creative director reviewing a short-video timeline before shooting.
 Look at the ENTIRE timeline as ONE film: decide the narrative arc and what each shot must communicate to keep the viewer engaged.
 
@@ -83,37 +86,39 @@ RULES:
 - Create contrast between adjacent segments (scale, energy, subject focus)
 - Keep each line short and concrete
 
-Output: ONLY a numbered list, one line per segment, nothing else. Format exactly:
-1. INTENT: ... | HIGHLIGHT: ... | TEMPO: calm
-2. INTENT: ... | HIGHLIGHT: ... | TEMPO: lively
-...\
+Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no commentary before or after it. Each object must have exactly these keys: "segment" (integer, 1-based), "intent", "highlight", "tempo" (the string "calm" or "lively"). Example for a 2-segment timeline:
+[
+  {"segment": 1, "intent": "...", "highlight": "...", "tempo": "calm"},
+  {"segment": 2, "intent": "...", "highlight": "...", "tempo": "lively"}
+]\
 """
 
-_STATE_TRACKER_SYSTEM = """\
+_STATE_TRACKER_SYSTEM_JSON = """\
 You are a continuity tracker for a short-video timeline. This is your ONLY job — you do not judge creative quality, only track facts.
 
 For EACH segment, decide whether the scene's persistent LOCATION (name the actual place, e.g. "residential alley", "kitchen"), time-of-day/lighting, weather, or ANYTHING about the subject's current appearance beyond her fixed identity (outfit, accessories, hairstyle, or anything else she is currently wearing/carrying/styled with) is DIFFERENT from the immediately preceding segment.
 
-Output for each segment EXACTLY ONE of the following two things — nothing else is valid:
+For each segment, the "state" value must be EXACTLY ONE of the following two things — nothing else is valid:
 (a) The literal text "NO CHANGE" — use this if and only if location, time-of-day/lighting, weather, and appearance are ALL identical to the previous segment.
-(b) A COMPLETE description covering location, time-of-day/lighting, weather, and everything about her current appearance — required for segment 1 (establish the baseline from the character/location/style reference), and required for any segment where the action explicitly changes any of these (e.g. "goes to sleep" → night; "changes into pajamas" → new outfit; "steps outside into the rain" → weather changes; "walks into the cafe" → location changes).
+(b) An OBJECT with exactly four keys — "location", "time_lighting", "weather", "appearance" — covering location, time-of-day/lighting, weather, and everything about her current appearance beyond her fixed identity. Required for segment 1 (establish the baseline from the character/location/style reference), and required for any segment where the action explicitly changes any of these (e.g. "goes to sleep" → night; "changes into pajamas" → new outfit; "steps outside into the rain" → weather changes; "walks into the cafe" → location changes).
 
 STRICT RULES:
-- NEVER write a partial description, a reference ("same as segment 5", "same as before"), an abbreviation, or a placeholder ("none mentioned") — only options (a) or (b) above exist. This also includes paraphrased "nothing changed" sentences like "Same location and time; same outfit and accessories" — that is NOT option (b), it names no actual garment/location words and is just option (a) in disguise. If nothing changed, write the literal text "NO CHANGE" and nothing else.
-- When you write a full description (b), restate EVERYTHING that is still true, not just what changed — the next segment's "NO CHANGE" depends on this being complete.
-- This matters most for changes that are easy to miss: once night falls, every later segment stays night until something explicitly says otherwise (sunrise, an alarm, etc.) — the same for weather, for a change of clothes, and for location (a tight/close-up shot still happens somewhere — always name it, even when the shot itself barely shows background).
+- NEVER write a partial object (missing a key), a reference ("same as segment 5", "same as before"), an abbreviation, or a placeholder ("none mentioned") in any field — only options (a) or (b) above exist. This also includes paraphrasing "nothing changed" as a sentence — that is NOT option (b); if nothing changed, write the literal text "NO CHANGE" and nothing else.
+- When you write the object (b), every one of the four fields must restate EVERYTHING that is still true for that category, not just what changed — the next segment's "NO CHANGE" depends on this being complete. Never leave a field empty unless that category genuinely has nothing to report.
+- This matters most for changes that are easy to miss: once night falls, every later segment stays night until something explicitly says otherwise (sunrise, an alarm, etc.) — the same for weather, for a change of clothes, and for location (a tight/close-up shot still happens somewhere — always name it in the "location" field, even when the shot itself barely shows background).
 - ⚠️ GET THE TIMING RIGHT: if a segment's OWN action contains the change (e.g. segment 4 says "goes to sleep"), the NEW state applies STARTING AT segment 4 itself — never delay it to segment 5.
 - ⚠️ ONE-DIRECTIONAL: the rule above only forbids DELAYING a stated change to a later segment than the one whose action actually describes it. It does NOT mean applying the change EARLIER. You can see every segment's action at once in the list below — a later segment's action may already describe a new outfit, location, or time-of-day. Do NOT anticipate it. Every segment BEFORE the one whose action states the change must still carry the OLD state (or "NO CHANGE"), even though the future change is visible to you in the list.
 
-Output: ONLY a numbered list, one line per segment, nothing else. Format exactly:
-1. Traditional Korean street market during light rain, early evening, oversized yellow raincoat over casual outfit, black hair in a low ponytail, clear umbrella.
-2. NO CHANGE
-3. NO CHANGE
-4. Kitchen, night; loose ribbed tank top, cotton shorts, hair undone, glasses on, barefoot.
-...\
+Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no commentary before or after it. Each object must have exactly these keys: "segment" (integer, 1-based), "state" (either the literal string "NO CHANGE", or an object with "location"/"time_lighting"/"weather"/"appearance" keys). Example for a 4-segment timeline:
+[
+  {"segment": 1, "state": {"location": "A living room", "time_lighting": "daytime", "weather": "", "appearance": "plain everyday top and pants, hair down"}},
+  {"segment": 2, "state": "NO CHANGE"},
+  {"segment": 3, "state": "NO CHANGE"},
+  {"segment": 4, "state": {"location": "A kitchen", "time_lighting": "evening", "weather": "", "appearance": "different top, hair tied back"}}
+]\
 """
 
-_SHOT_DIRECTOR_SYSTEM = """\
+_SHOT_DIRECTOR_SYSTEM_JSON = """\
 You are a film director planning camera shots for a short video.
 Given a list of timed segment actions (each with a creative intent) and the video orientation, assign one distinct camera direction per segment.
 
@@ -233,104 +238,12 @@ ACROSS THE WHOLE TIMELINE (not just consecutive segments):
 - Angles: eye level | low angle | high angle | over-shoulder | Dutch tilt | ground level | profile
 - Framings: extreme close-up (face only) | close-up | medium close-up (bust) | medium | medium wide | wide | extreme wide
 
-Output: ONLY a numbered list, one line per segment, nothing else. Format exactly:
-1. [full camera direction description]
-2. [full camera direction description]
-...\
-"""
-
-_VARIETY_AUDITOR_SYSTEM = """\
-You are a shot-variety auditor reviewing a complete shot list before filming.
-Input: numbered camera directions for consecutive segments of one short film.
-
-CHECK ACROSS ALL SEGMENTS:
-1. FACING — classify each shot's subject facing relative to camera: frontal / three-quarter left / three-quarter right / left profile / right profile / back or over-shoulder.
-   - NEVER allow 3 or more consecutive frontal-facing shots
-   - Use at least 3 different facing categories across the timeline
-   - Include at least one profile or back/over-shoulder shot in every 4 segments
-2. CAMERA POSITION — vary front / side / behind / low / high; never the same side 3 times in a row.
-3. APPROACH — at most ONE shot in the whole timeline where the subject walks toward the camera.
-4. WALKING SIDE-VIEW — if 3 or more segments involve walking, AT LEAST ONE of them must film the subject from the SIDE while walking (lateral crossing in 16:9, or handheld lateral tracking alongside in either orientation). If none exists, convert one walking segment to a side-view lateral shot — any walking segment EXCEPT the first segment and the last segment of the timeline.
-
-REWRITE only the directions needed to fix violations; copy all others verbatim.
-When you rewrite, state the new facing EXPLICITLY and CONCRETELY (e.g. "seen in right profile from the side, her face turned away from the lens", "framed from behind her left shoulder").
-
-NEVER change:
-- shot scale (a close-up stays a close-up)
-- "feet only" / tracking / static designations
-- the action content itself
-For stationary actions (touching, feeding, sipping, working at an overhead target) change the CAMERA's side (profile, over-shoulder, behind at an angle) rather than the subject's pose.
-
-Output: ONLY the full numbered list, one line per segment, same format as the input, nothing else.\
-"""
-
-# ============================================================
-# Pass0/1/1.5 JSON構造化出力版のシステムプロンプト(2026-07-16新設)。
-# 上の自由記述版と本文のルールは同一で、末尾の出力フォーマット指定だけをJSON契約に
-# 書き換えている。呼び出し元(_json関数群)はこちらを使う。旧版は無編集のまま残す。
-# ============================================================
-
-_CREATIVE_DIRECTOR_SYSTEM_JSON = """\
-You are a creative director reviewing a short-video timeline before shooting.
-Look at the ENTIRE timeline as ONE film: decide the narrative arc and what each shot must communicate to keep the viewer engaged.
-
-For each segment decide:
-- INTENT: this shot's role in the whole piece (opening hook / character charm / environment texture / interaction warmth / rhythm change / finale payoff) and what it must communicate
-- HIGHLIGHT: the single most eye-catching visual element to emphasize in this shot
-- TEMPO: calm or lively
-
-RULES:
-- The FIRST segment must hook the viewer instantly
-- The LAST segment must land as the finale/payoff
-- Spread at least 2-3 "lively" segments through the timeline — never make everything calm
-- Create contrast between adjacent segments (scale, energy, subject focus)
-- Keep each line short and concrete
-
-Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no commentary before or after it. Each object must have exactly these keys: "segment" (integer, 1-based), "intent", "highlight", "tempo" (the string "calm" or "lively"). Example for a 2-segment timeline:
+Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no commentary before or after it. Each object must have exactly these keys: "segment" (integer, 1-based), "direction" (the full camera direction description). Example:
 [
-  {"segment": 1, "intent": "...", "highlight": "...", "tempo": "calm"},
-  {"segment": 2, "intent": "...", "highlight": "...", "tempo": "lively"}
+  {"segment": 1, "direction": "..."},
+  {"segment": 2, "direction": "..."}
 ]\
 """
-
-_STATE_TRACKER_SYSTEM_JSON = """\
-You are a continuity tracker for a short-video timeline. This is your ONLY job — you do not judge creative quality, only track facts.
-
-For EACH segment, decide whether the scene's persistent LOCATION (name the actual place, e.g. "residential alley", "kitchen"), time-of-day/lighting, weather, or ANYTHING about the subject's current appearance beyond her fixed identity (outfit, accessories, hairstyle, or anything else she is currently wearing/carrying/styled with) is DIFFERENT from the immediately preceding segment.
-
-For each segment, the "state" value must be EXACTLY ONE of the following two things — nothing else is valid:
-(a) The literal text "NO CHANGE" — use this if and only if location, time-of-day/lighting, weather, and appearance are ALL identical to the previous segment.
-(b) An OBJECT with exactly four keys — "location", "time_lighting", "weather", "appearance" — covering location, time-of-day/lighting, weather, and everything about her current appearance beyond her fixed identity. Required for segment 1 (establish the baseline from the character/location/style reference), and required for any segment where the action explicitly changes any of these (e.g. "goes to sleep" → night; "changes into pajamas" → new outfit; "steps outside into the rain" → weather changes; "walks into the cafe" → location changes).
-
-STRICT RULES:
-- NEVER write a partial object (missing a key), a reference ("same as segment 5", "same as before"), an abbreviation, or a placeholder ("none mentioned") in any field — only options (a) or (b) above exist. This also includes paraphrasing "nothing changed" as a sentence — that is NOT option (b); if nothing changed, write the literal text "NO CHANGE" and nothing else.
-- When you write the object (b), every one of the four fields must restate EVERYTHING that is still true for that category, not just what changed — the next segment's "NO CHANGE" depends on this being complete. Never leave a field empty unless that category genuinely has nothing to report.
-- This matters most for changes that are easy to miss: once night falls, every later segment stays night until something explicitly says otherwise (sunrise, an alarm, etc.) — the same for weather, for a change of clothes, and for location (a tight/close-up shot still happens somewhere — always name it in the "location" field, even when the shot itself barely shows background).
-- ⚠️ GET THE TIMING RIGHT: if a segment's OWN action contains the change (e.g. segment 4 says "goes to sleep"), the NEW state applies STARTING AT segment 4 itself — never delay it to segment 5.
-- ⚠️ ONE-DIRECTIONAL: the rule above only forbids DELAYING a stated change to a later segment than the one whose action actually describes it. It does NOT mean applying the change EARLIER. You can see every segment's action at once in the list below — a later segment's action may already describe a new outfit, location, or time-of-day. Do NOT anticipate it. Every segment BEFORE the one whose action states the change must still carry the OLD state (or "NO CHANGE"), even though the future change is visible to you in the list.
-
-Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no commentary before or after it. Each object must have exactly these keys: "segment" (integer, 1-based), "state" (either the literal string "NO CHANGE", or an object with "location"/"time_lighting"/"weather"/"appearance" keys). Example for a 4-segment timeline:
-[
-  {"segment": 1, "state": {"location": "A living room", "time_lighting": "daytime", "weather": "", "appearance": "plain everyday top and pants, hair down"}},
-  {"segment": 2, "state": "NO CHANGE"},
-  {"segment": 3, "state": "NO CHANGE"},
-  {"segment": 4, "state": {"location": "A kitchen", "time_lighting": "evening", "weather": "", "appearance": "different top, hair tied back"}}
-]\
-"""
-
-_SHOT_DIRECTOR_SYSTEM_JSON = _SHOT_DIRECTOR_SYSTEM.replace(
-    "Output: ONLY a numbered list, one line per segment, nothing else. Format exactly:\n"
-    "1. [full camera direction description]\n"
-    "2. [full camera direction description]\n"
-    "...",
-    'Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no '
-    'commentary before or after it. Each object must have exactly these keys: "segment" (integer, '
-    '1-based), "direction" (the full camera direction description). Example:\n'
-    '[\n'
-    '  {"segment": 1, "direction": "..."},\n'
-    '  {"segment": 2, "direction": "..."}\n'
-    ']',
-)
 
 _VARIETY_AUDITOR_SYSTEM_JSON = """\
 You are a shot-variety auditor reviewing a complete shot list before filming.
@@ -1500,7 +1413,8 @@ async def _process_segment_phase1(
 
     `state`はPass0bで確定済みのSTATE文字列を呼び出し元から直接渡す(2026-07-16、JSON経路)。
     `intent`は引き続きPass2の文脈用に"INTENT: ... | STATE: ..."の結合文字列を渡すが、
-    Pass3向けの`current_state`はここでは`_extract_state_from_intent`による再抽出を経由しない。"""
+    Pass3向けの`current_state`はここでは正規表現による再抽出(旧`_extract_state_from_intent`、
+    2026-07-16に削除)を経由しない。"""
     print(f"[i2v-tl6] [{i}/{total}] {seg['duration']}s  ({direction})")
     reserved = _reserved_props_for(segments, i - 1)
     print(f"[i2v-tl6]   [{i}/{total}] Pass2: シーン記述中(LLM)...")

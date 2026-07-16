@@ -251,24 +251,6 @@ async def _auto_segment_narrative(text: str) -> str:
     return f"{global_text}\n\nTimeline:\n" + "\n".join(lines)
 
 
-def _parse_numbered_lines(raw: str, count: int, fallback: str) -> list[str]:
-    """LLM出力の番号付きリストをパースし、不足分はfallbackで埋める。
-    区切り文字の直後に空白を1つ以上要求する(2026-07-10修正)。旧`\\s*`だと"16:9 WIDESCREEN
-    LANDSCAPE"のようなアスペクト比表記("16"+":"+"9…")まで誤って1項目としてマッチしてしまい、
-    Shot DirectorがオリエンテーションをそのままLLM出力の先頭行に書いた場合に本来の番号付き
-    リストが1件ずつ後ろへずれ、結果として全セグメントのカメラ方向が1つ前のセグメント用の
-    ものと入れ替わる事故が実データで発覚した(bus.txt run、セグメント5の屋内シーンに
-    セグメント4の傘が混入)。"""
-    items: list[str] = []
-    for line in raw.split("\n"):
-        m = re.match(r"^\d+[\.\:]\s+(.+)", line.strip())
-        if m:
-            items.append(m.group(1).strip())
-    while len(items) < count:
-        items.append(fallback)
-    return items[:count]
-
-
 def _seg_video_path(run_id: str, num: int, label: str, prefix: str) -> Path:
     """出力prefixはi2v/t2vそれぞれのV5ファイル側から渡す(i2v5/t2v5)。"""
     return cfg.GENERATED_DIR / f"{prefix}_{run_id}_seg{num:02d}_{label}.mp4"
@@ -407,7 +389,6 @@ def _has_word(text: str, word: str) -> bool:
     return bool(re.search(r"\b" + re.escape(word) + r"s?\b", text))
 
 
-_ANIMAL_WORDS = ("cat", "kitten", "dog", "puppy", "bird")
 # 部分文字列誤マッチ対策("catches"の中の"cat"等)。動物判定は必ずこのregexで行う
 _ANIMAL_RE = re.compile(r"\b(cat|kitten|dog|puppy|bird)s?\b", re.IGNORECASE)
 
@@ -949,7 +930,8 @@ async def _extract_character_line(global_desc: str) -> str:
     Formatterがcharacter_lineの旧衣装とSTATEの新衣装を両方書いてしまう事故につながる(実データで確認済み)。
 
     髪型(結び方)・メガネは以前ここから除外し、STATE側の別の補完機構
-    (`_extract_baseline_hairstyle`/`_repair_missing_hairstyle`)で個別に扱っていたが、
+    (旧`_extract_baseline_hairstyle`/`_repair_missing_hairstyle`、ともに2026-07-16に
+    未使用のため削除。git履歴参照)で個別に扱っていたが、
     ユーザー判断で「国籍・性別・年齢・髪色と同じ固定アイデンティティの一部」として
     ここに統合した(2026-07-10)。実データで、Pass0bがSTATEの部分更新でこの2つを
     丸ごと落とす事故が繰り返し起きたため、都度STATE側に個別の補完機構を作るのではなく、
@@ -999,90 +981,7 @@ async def _extract_character_line(global_desc: str) -> str:
     return line[:1].upper() + line[1:] if line else line
 
 
-async def _extract_baseline_hairstyle(global_desc: str) -> str:
-    """参照文から髪型の基準描写(例: "messy ponytail with side-swept bangs")を抽出する。
-    衣装と並んで「誰にでも必ずある」普遍的なカテゴリのため、STATEとは別に参照文から
-    直接・確実に抽出しておく(2026-07-07)。Pass0(STATE)は温度0.8の確率的生成のため、
-    まれに全セグメントの STATE から髪型カテゴリ自体が丸ごと抜け落ちることがあり
-    (ユーザー実測で発覚)、その場合の機械的な補完に使う。髪色はcharacter_line側が
-    (不変の識別子として)担当するため、ここでは「結び方・スタイル」のみを対象にする。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
-    try:
-        resp = await client.chat.completions.create(
-            model=cfg.LLM_MODEL,
-            messages=[
-                {"role": "system", "content": (
-                    "From the reference, extract ONLY how the subject's hair is STYLED (e.g. 'messy ponytail "
-                    "with side-swept bangs', 'loose braid') — NOT the hair color (that's handled elsewhere). "
-                    "Output ONLY that short phrase, nothing else. If no hairstyle is mentioned, output an empty line."
-                )},
-                {"role": "user", "content": f"/no_think\n{global_desc}"},
-            ],
-            temperature=0.3,
-            max_tokens=64,
-        )
-    except Exception:
-        return ""
-    line = (resp.choices[0].message.content or "").strip()
-    if not line:
-        line = (getattr(resp.choices[0].message, "reasoning_content", None) or "").strip()
-    line = line.split("\n")[0].strip().strip(".")
-    return line
-
-
-def _repair_missing_hairstyle(intents: list[str], baseline_hairstyle: str) -> list[str]:
-    """Pass0のSTATEに「hair」という語が一切無いセグメントへ、参照文から抽出済みの
-    髪型基準値を機械的に補完する。髪型・衣装は「誰にでも必ずある」普遍的なカテゴリの
-    ため明示的に扱う(ユーザー確認済み、他の任意的な属性(アクセサリー等)への拡張はしない)。
-    「hair」という語が(どんな具体的なスタイルであれ)既にあれば触らない — 言い換えを
-    誤検出して二重記述を作らないため、判定は「カテゴリの有無」のみで行う。"""
-    if not baseline_hairstyle:
-        return intents
-    repaired = []
-    for line in intents:
-        m = re.search(r"STATE:\s*(.+)$", line)
-        if not m or _has_word(m.group(1).lower(), "hair"):
-            repaired.append(line)
-            continue
-        new_state = m.group(1).rstrip() + f", {baseline_hairstyle}"
-        repaired.append(line[:m.start()] + f"STATE: {new_state}")
-    return repaired
-
-
 _STATE_REF_RE = re.compile(r"^same as (?:segment\s+)?(\d+|previous|prior)\.?\s*", re.IGNORECASE)
-
-
-def _resolve_state_references(intents: list[str]) -> list[str]:
-    """Pass0のSTATE CONTINUITY RULEは「変化が無ければ前セグメントのSTATEをそのままコピーする」
-    指示だが、ローカルLLMが実体を運ばず"Same as 11."のような参照だけを書くことがある
-    (セグメント数が多い長尺タイムラインで顕在化しやすい、2026-07-10実データで確認: STATE本文が
-    "Same as N."のみになり、水着の描写が参照元の1セグメントにしか残らない/夜のシーンの一部が
-    朝になる、という2つの症状で発覚)。この参照テキストがそのまま下流(C17衣装チェック・
-    Scene Writerの時間帯authority判定)に渡ると、その回はSTATEが実質空扱いになる。
-    番号参照・"previous"/"prior"参照の両方を実際のSTATE本文に解決し、後続の追記
-    (", loose, slightly frizzy waves"等)は保持する。`_repair_missing_hairstyle`と同じ
-    「Pass0直後のPython決定論的リペア」設計にそろえ、その前に呼ぶ(髪型欠落判定が
-    参照テキストでなく解決済みの実体を見られるようにするため)。"""
-    states: list[str] = []
-    resolved: list[str] = []
-    for i, line in enumerate(intents):
-        m = re.search(r"STATE:\s*(.+)$", line)
-        if not m:
-            resolved.append(line)
-            states.append("")
-            continue
-        state_text = m.group(1).strip()
-        ref = _STATE_REF_RE.match(state_text)
-        if ref:
-            token = ref.group(1).lower()
-            target_idx = i - 1 if token in ("previous", "prior") else int(token) - 1
-            base = states[target_idx] if 0 <= target_idx < len(states) else ""
-            if base:
-                trailing = state_text[ref.end():].strip().lstrip(",").strip()
-                state_text = f"{base}, {trailing}" if trailing else base
-        states.append(state_text)
-        resolved.append(line[:m.start()] + f"STATE: {state_text}")
-    return resolved
 
 
 _NO_CHANGE_RE = re.compile(
@@ -1090,48 +989,6 @@ _NO_CHANGE_RE = re.compile(
     r"|^same\s+(?:location|outfit|scene|time|position|appearance)\b",
     re.IGNORECASE,
 )
-
-
-def _resolve_state_continuity(state_lines: list[str]) -> list[str]:
-    """State Tracker(Pass0b、V6で新設)の出力を実際のSTATE全文に解決する。
-
-    V6ではPass0を「創造(INTENT/HIGHLIGHT/TEMPO)」と「継続性記録(STATE)」の2つの専属パスに
-    分割した(2026-07-10、ユーザー指摘: LTX書式変換+ローマ字変換を1回のLLM呼び出しに
-    詰め込んだら不安定だったが2パスに分けたら確実に動いた、という過去の実体験と同型の
-    問題——INTENT/HIGHLIGHT/TEMPOという創造的判断とSTATEという地味な継続記録を同じ呼び出しに
-    同居させていたため、後者だけが省略・空欄という形で壊れていた)。
-
-    State Trackerの契約は二択のみ: リテラル`NO CHANGE`(前セグメントと完全に同一)か、
-    完全な状態記述(セグメント1、または何かが変化した場合)。中間的な省略・参照は
-    プロンプト上禁止しているが、LLMが契約に従わず`_resolve_state_references`時代の
-    旧パターン(「Same as N」等)に戻った場合の保険として`_STATE_REF_RE`の検出も残す。
-
-    **2026-07-12追記**: 「Same as N」とも異なる**第3の変種**が実データで発覚した——
-    "Same location and time; same outfit and accessories; black hair in a messy low
-    ponytail with side-swept bangs."のような、地の文で「変わっていません」と言い換える
-    パターン。`_NO_CHANGE_RE`(旧: リテラル`no change`等の完全一致のみ)にはマッチせず、
-    かといって全く新しい完全な記述でもないため、そのまま(具体的な服装名を持たない曖昧な
-    文として)下流のGround truth/Keyframe生成に渡ってしまい、キーフレーム側のLLMが
-    具体的な服装語を持たないまま独自に(グローバル説明にあった別候補の衣装等を)補ってしまう
-    事故につながった(浴衣タイムラインのテストで、クロップトップのはずのセグメントに
-    浴衣が混入)。`_NO_CHANGE_RE`を「no change系の完全一致」に加えて「Same
-    location/outfit/scene/time/position/appearance で始まる行」も検出するよう拡張し、
-    前セグメントの解決済み全文で置き換える(パラフレーズ変種もNO CHANGEと同じ扱いにする)。"""
-    resolved: list[str] = []
-    for i, raw in enumerate(state_lines):
-        text = raw.strip()
-        ref = _STATE_REF_RE.match(text)
-        if ref:
-            token = ref.group(1).lower()
-            target_idx = i - 1 if token in ("previous", "prior") else int(token) - 1
-            base = resolved[target_idx] if 0 <= target_idx < len(resolved) else ""
-            trailing = text[ref.end():].strip().lstrip(",").strip()
-            resolved.append(f"{base}, {trailing}" if (base and trailing) else (base or text))
-        elif not text or _NO_CHANGE_RE.match(text):
-            resolved.append(resolved[i - 1] if i > 0 else "")
-        else:
-            resolved.append(text)
-    return resolved
 
 
 def _trim_character_for_scale(character_line: str, direction: str) -> str:
@@ -1339,142 +1196,17 @@ def _character_tokens_missing(text: str, character_line: str) -> bool:
     return present < max(1, len(uniq) // 2)
 
 
-def _extract_state_from_intent(intent: str) -> str:
-    """Pass0(Creative Director)の出力行("INTENT: ... | HIGHLIGHT: ... | TEMPO: ... | STATE: ...")
-    からSTATE部分だけを取り出す。STATEは常に最後のフィールドとして出力される。"""
-    m = re.search(r"STATE:\s*(.+)$", intent)
-    return m.group(1).strip() if m else ""
-
-
 # ============================================================
 # Pass0(Creative Director)/ Pass1(Shot Director)/ Pass1.5(Variety Auditor)/ Pass2(Scene Writer)
 #
-# これらのシステムプロンプト定数(_CREATIVE_DIRECTOR_SYSTEM等)はi2v/t2vで内容が実際に
+# これらのシステムプロンプト定数(_CREATIVE_DIRECTOR_SYSTEM_JSON等)はi2v/t2vで内容が実際に
 # 食い違っている(t2vが一部シーン中立化・言い回し改善を受け取っていない箇所がある)ため、
 # 関数はここに置くがシステムプロンプト文字列は各V5ファイル側から引数で渡す。
-# ============================================================
-
-async def _plan_creative_intent(global_desc: str, segments: list[dict], orientation: str, system_prompt: str) -> list[str]:
-    """Pass0: クリエイティブディレクターが全体の演出意図・見せ場・テンポを一括計画する。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
-    seg_list = "\n".join(
-        f"{i}. ({seg['duration']}s) {seg['action']}"
-        for i, seg in enumerate(segments, 1)
-    )
-    orient_note = "16:9 widescreen landscape" if orientation == "horizontal" else "9:16 vertical portrait"
-    user_msg = (
-        f"/no_think\n"
-        f"## Video style / setting\n{global_desc}\n\n"
-        f"## Orientation\n{orient_note}\n\n"
-        f"## Segments ({len(segments)} total)\n{seg_list}"
-    )
-    resp = await client.chat.completions.create(
-        model=cfg.LLM_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_msg},
-        ],
-        temperature=0.8,
-        # STATE追加で1行あたりの出力が伸びたため、固定1024だと長いタイムライン(22セグメント等)
-        # で末尾の数セグメントのINTENT/STATE行が丸ごと欠落する事故が実データで発覚した。
-        # 4096に固定(ユーザー指定、他のLLM呼び出しと同じ値)
-        max_tokens=4096,
-    )
-    raw = (resp.choices[0].message.content or "").strip()
-    if not raw:
-        raw = (getattr(resp.choices[0].message, "reasoning_content", None) or "").strip()
-
-    return _parse_numbered_lines(raw, len(segments), "")
-
-
-async def _plan_shot_directions(global_desc: str, segments: list[dict], orientation: str, intents: list[str], system_prompt: str) -> list[str]:
-    """Pass1: 全セグメントのカメラ構図をショットディレクターLLMが一括で計画する。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
-    seg_list = "\n".join(
-        f"{i}. ({seg['duration']}s) {seg['action']}"
-        + (f"\n   Creative intent: {intent}" if intent else "")
-        for i, (seg, intent) in enumerate(zip(segments, intents), 1)
-    )
-    orient_note = (
-        "16:9 WIDESCREEN LANDSCAPE — wide lateral space: LATERAL crossing and horizontal compositions work well"
-        if orientation == "horizontal" else
-        "9:16 VERTICAL PORTRAIT — very narrow lateral space: LATERAL crossing is FORBIDDEN; "
-        "for walking use toward/away from lens, tracking follow, or tight patterns; "
-        "favor vertical compositions (low/high angle, sky above and ground below)"
-    )
-    user_msg = (
-        f"/no_think\n"
-        f"## Video style / setting\n{global_desc}\n\n"
-        f"## Orientation\n{orient_note}\n\n"
-        f"## Segments ({len(segments)} total)\n{seg_list}"
-    )
-    resp = await client.chat.completions.create(
-        model=cfg.LLM_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_msg},
-        ],
-        temperature=0.8,
-        max_tokens=1024,
-    )
-    raw = (resp.choices[0].message.content or "").strip()
-    if not raw:
-        raw = (getattr(resp.choices[0].message, "reasoning_content", None) or "").strip()
-
-    raw_dirs = _parse_numbered_lines(raw, len(segments), "eye level, static handheld, medium")
-    return [_enforce_shot_rules(seg["action"], d) for seg, d in zip(segments, raw_dirs)]
-
-
-async def _audit_shot_variety(segments: list[dict], directions: list[str], orientation: str, system_prompt: str) -> list[str]:
-    """Pass1.5: 全構図を俯瞰し、向き・カメラ位置・接近の単調さを監査して書き直す。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
-    dir_list = "\n".join(
-        f"{i}. [{seg['action']}] {d}"
-        for i, (seg, d) in enumerate(zip(segments, directions), 1)
-    )
-    orient_note = (
-        "16:9 WIDESCREEN LANDSCAPE" if orientation == "horizontal"
-        else "9:16 VERTICAL PORTRAIT (no lateral crossing patterns)"
-    )
-    user_msg = (
-        f"/no_think\n"
-        f"## Orientation\n{orient_note}\n\n"
-        f"## Shot list ({len(segments)} segments, format: N. [action] direction)\n{dir_list}"
-    )
-    resp = await client.chat.completions.create(
-        model=cfg.LLM_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": user_msg},
-        ],
-        temperature=0.4,
-        max_tokens=1024,
-    )
-    raw = (resp.choices[0].message.content or "").strip()
-    if not raw:
-        raw = (getattr(resp.choices[0].message, "reasoning_content", None) or "").strip()
-
-    audited = _parse_numbered_lines(raw, len(segments), "")
-    # パース失敗・空行のセグメントは監査前のdirectionを維持し、
-    # 書き直されたものは actionの先頭タグ [.....] が残っていれば除去 → 安全ルールを再適用
-    result: list[str] = []
-    for seg, orig, aud in zip(segments, directions, audited):
-        d = re.sub(r"^\[[^\]]*\]\s*", "", aud).strip() or orig
-        result.append(_enforce_shot_rules(seg["action"], d))
-    return result
-
-
-# ============================================================
-# Pass0/1/1.5 JSON構造化出力版(2026-07-16新設)
 #
-# 上の自由記述版(_parse_numbered_lines・_plan_creative_intent・_plan_shot_directions・
-# _audit_shot_variety)は無編集のまま残し、こちらは並行する別経路として追加する。
-# 理由: 自由記述版は「行の出現位置=セグメント番号」という前提でパースしており、
-# 紛れ込んだ数字付き行がずれを起こすと後続セグメント全部の帰属がずれる事故が
-# 実データで発覚した(_parse_numbered_linesのdocstring参照)。各要素にsegment番号を
-# 明示させるJSON配列にすれば、この位置依存の誤帰属というクラスのバグを構造的に排除できる。
-# 呼び出し元を新旧どちらの経路に向けるかだけで切り替えられるよう、関数・システムプロンプトとも
-# 完全に別名で用意する(問題があれば呼び出し元を旧関数に戻すだけで即座に復帰できる)。
+# Pass0/1/1.5はJSON構造化出力(各要素にsegment番号を明示させるJSON配列)のみを使う
+# (2026-07-16、旧自由記述版は「行の出現位置=セグメント番号」という前提でパースしており、
+# 紛れ込んだ数字付き行がずれを起こすと後続セグメント全部の帰属がずれる事故が実データで
+# 発覚したため削除・置き換え済み。旧実装はgit履歴を参照)。
 # ============================================================
 
 # 構造パース失敗時のリトライ上限。品質改善ループ用の_LINT_MAX_ATTEMPTS(5回・最終的に
@@ -1565,7 +1297,7 @@ def _flatten_state(state: dict) -> str:
     "appearance":...})を、既存の消費側(Pass2のintent_block・Pass3/3a/3bのcurrent_state・
     C17 _garments_missing・C18 _state_details_missingなど)がそのまま扱えるフラットな
     カンマ区切り文字列に変換する。**location→time_lighting→weather→appearanceの順は
-    決め打ちではなく必須**: _state_details_missing(1230行)がstate.split(",")した先頭要素を
+    決め打ちではなく必須**: _state_details_missing(1187行)がstate.split(",")した先頭要素を
     「場所」として特別扱いしclauses[1:]だけを検品対象にする設計になっている
     (場所は別ルールで担当、というdocstring明記の前提)。_garments_missing・
     _enforce_garments_presentも同じ前提。この順序を守る限り、これら3つの既存関数は
@@ -1575,7 +1307,8 @@ def _flatten_state(state: dict) -> str:
 
 
 def _resolve_state_continuity_json(state_lines: list) -> list[dict]:
-    """_resolve_state_continuity(1078行、無編集のまま残す)のdict版。Pass0b(JSON版)は
+    """旧`_resolve_state_continuity`(自由記述版、2026-07-16に役目を終え削除。git履歴参照)の
+    dict版。Pass0b(JSON版)は
     各セグメントの"state"値として、リテラル文字列"NO CHANGE"(変化なし)か、
     {"location":..., "time_lighting":..., "weather":..., "appearance":...}という
     オブジェクト(変化あり)のどちらかを返す。文字列値は_STATE_REF_RE("same as N"等の

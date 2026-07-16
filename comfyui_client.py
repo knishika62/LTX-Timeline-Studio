@@ -155,52 +155,6 @@ async def upload_image_to_comfyui(img_path: Path) -> str:
     return await _retry_request(_do)
 
 
-async def upload_audio_to_comfyui(audio_path: Path) -> str:
-    """音声をComfyUI動画サーバーにアップロードしてサーバー側ファイル名を返す。"""
-    server = cfg.COMFYUI_VIDEO_URL
-
-    async def _do() -> str:
-        async with httpx.AsyncClient(timeout=60) as client:
-            with audio_path.open("rb") as f:
-                r = await client.post(
-                    f"{server}/upload/image",
-                    files={"image": (audio_path.name, f, "audio/wav")},
-                    data={"type": "input", "overwrite": "true"},
-                )
-                r.raise_for_status()
-                return r.json()["name"]
-
-    return await _retry_request(_do)
-
-
-async def generate_s2v_video(prompt: str, image_server_filename: str, audio_server_filename: str, duration_s: float) -> Path:
-    """参照画像+音声からリップシンク動画(S2V)を生成してローカルに保存したPathを返す。"""
-    workflow = _load_workflow("LTX2_S2V_V720p.json")
-
-    workflow["240"]["inputs"]["image"] = image_server_filename       # input1: 参照画像
-    workflow["243"]["inputs"]["audio"] = audio_server_filename       # input2: セリフ音声
-    workflow["286"]["inputs"]["value"] = duration_s                  # input3: 動画の長さ(秒)
-    workflow["169"]["inputs"]["text"] = prompt                       # input4: シーン・動きプロンプト
-    workflow["178"]["inputs"]["noise_seed"] = random.randint(0, 2**31 - 1)
-    workflow["315"]["inputs"]["noise_seed"] = random.randint(0, 2**31 - 1)
-
-    server = cfg.COMFYUI_VIDEO_URL
-    prompt_id = await _queue_prompt(workflow, server)
-    outputs = await _wait_for_output(prompt_id, server, VIDEO_TIMEOUT_S)
-
-    # node 190 = Video Combine(output)
-    node_out = outputs.get("190", {})
-    files = node_out.get("gifs") or node_out.get("videos") or []
-    if not files:
-        raise RuntimeError(f"S2V動画出力が見つかりません: {node_out}")
-    file_info = files[0]
-    filename = file_info["filename"]
-    subfolder = file_info.get("subfolder", "")
-
-    dest = cfg.GENERATED_DIR / filename
-    return await _download_output(filename, subfolder, server, dest)
-
-
 async def upload_video_to_comfyui(video_path: Path) -> str:
     """動画をComfyUI動画サーバーにアップロードしてサーバー側ファイル名を返す。"""
     server = cfg.COMFYUI_VIDEO_URL
@@ -233,41 +187,6 @@ async def upscale_video(video_server_filename: str) -> Path:
     files = node_out.get("videos") or node_out.get("images") or node_out.get("gifs") or []
     if not files:
         raise RuntimeError(f"アップスケール動画出力が見つかりません: {node_out}")
-    file_info = files[0]
-    filename = file_info["filename"]
-    subfolder = file_info.get("subfolder", "")
-
-    dest = cfg.GENERATED_DIR / filename
-    return await _download_output(filename, subfolder, server, dest)
-
-
-async def generate_video_v2(prompt: str, keyframe_server_filename: str) -> Path:
-    """動画を生成してローカルに保存したPathを返す(2026版LTX-2.3ワークフロー、generate_videoとは別物の検証用)。"""
-    workflow = _load_workflow("2026_ltx2_3_i2v.json")
-
-    # プロンプト注入 (node 373 = PrimitiveStringMultiline, input1)
-    workflow["373"]["inputs"]["value"] = prompt
-    # keyframe画像 (node 269 = LoadImage, input2)
-    workflow["269"]["inputs"]["image"] = keyframe_server_filename
-    # seedランダム化は1段目(node 331)のみ。2段目(node 330)は3stepsのupscaleのみなので固定値を維持
-    workflow["331"]["inputs"]["noise_seed"] = random.randint(0, 2**31 - 1)
-    # ワークフロー内LLMノードのURLとモデルを.envで上書き
-    for node_id in ("380", "381"):
-        if node_id in workflow:
-            workflow[node_id]["inputs"]["base_url"] = cfg.COMFYUI_LLM_BASE_URL
-            workflow[node_id]["inputs"]["model"] = cfg.COMFYUI_LLM_MODEL
-            if cfg.COMFYUI_LLM_API_KEY:
-                workflow[node_id]["inputs"]["api_key"] = cfg.COMFYUI_LLM_API_KEY
-
-    server = cfg.COMFYUI_VIDEO_URL
-    prompt_id = await _queue_prompt(workflow, server)
-    outputs = await _wait_for_output(prompt_id, server, VIDEO_TIMEOUT_S)
-
-    # node 75 = SaveVideo(出力キー名は未確認のため候補を順に探す)
-    node_out = outputs.get("75", {})
-    files = node_out.get("videos") or node_out.get("images") or node_out.get("gifs") or []
-    if not files:
-        raise RuntimeError(f"動画出力が見つかりません: {node_out}")
     file_info = files[0]
     filename = file_info["filename"]
     subfolder = file_info.get("subfolder", "")
