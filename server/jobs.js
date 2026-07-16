@@ -18,6 +18,7 @@ class Job {
     this.id = String(nextId++);
     this.type = type;
     this.status = "running"; // running | done | error | stopped
+    this.stopRequested = false;
     this.error = null;
     this.log = [];
     this.state = {};
@@ -69,7 +70,25 @@ class Job {
   stop() {
     const proc = this.signal.proc;
     if (this.status === "running" && proc && proc.exitCode === null) {
-      proc.kill("SIGTERM");
+      this.stopRequested = true;
+      // 実際にGPU処理を行う python は conda run の子プロセスなので、conda run 自身の pid だけ
+      // killしても止まらないことがある(conda runがSIGTERMを子へ転送しない)。detachedで
+      // 作ったプロセスグループごと殺す(pid同様に負のpidを渡すとグループ全体に届く)。
+      try {
+        process.kill(-proc.pid, "SIGTERM");
+      } catch {
+        proc.kill("SIGTERM"); // グループkillが失敗した場合の保険
+      }
+      // 一定時間待って死んでいなければ、同じくグループへSIGKILLでエスカレーション
+      setTimeout(() => {
+        if (proc.exitCode === null) {
+          try {
+            process.kill(-proc.pid, "SIGKILL");
+          } catch {
+            /* すでに終了済み */
+          }
+        }
+      }, 5000);
       return true;
     }
     return false;
@@ -166,11 +185,14 @@ export function startGeneration(engine, { promptPath = "", orientation = "--h", 
       const code = await streamCommand(cmd, args, {
         onLine: (line) => job.appendLog(line),
         signal: job.signal,
+        detached: true,
       });
       clearInterval(poll);
       if (runId == null) runId = findRunId(prefix, launchTs);
       if (runId) job.setState({ engine, ...runSnapshot(engine, runId) });
-      job.finish(code === 0 ? "done" : "error", code === 0 ? null : `CLI exited with code ${code}`);
+      if (code === 0) job.finish("done");
+      else if (job.stopRequested) job.finish("stopped");
+      else job.finish("error", `CLI exited with code ${code}`);
     } catch (e) {
       clearInterval(poll);
       job.finish("error", String(e.message));

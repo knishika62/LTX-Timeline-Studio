@@ -21,7 +21,7 @@ function PromptEditor(props: {
   setValidation: (v: Validation | null) => void;
   filename: string;
   setFilename: (f: string) => void;
-  onSaved: (path: string) => void;
+  onSaved: (path: string, name: string) => void;
   fontSize: number;
 }) {
   const [busy, setBusy] = useState(false);
@@ -53,7 +53,7 @@ function PromptEditor(props: {
       });
       props.setValidation(r.validation);
       setSaveStatus(`Saved: prompt/${r.name}(②Generateタブに設定済み)`);
-      props.onSaved(r.path);
+      props.onSaved(r.path, r.name);
     } catch (e) {
       setSaveStatus(`Error: ${(e as Error).message}`);
     } finally {
@@ -76,11 +76,11 @@ function PromptEditor(props: {
         <button onClick={resummarize} disabled={busy || !props.text.trim()}>Refresh summary (from current text)</button>
         <ValidationStatus v={props.validation} />
       </div>
+      {saveStatus && <div className={`status${saveStatus.startsWith("Saved:") ? " ok" : saveStatus.startsWith("Error:") ? " error" : ""}`}>{saveStatus}</div>}
       <div className="row">
         <input type="text" className="grow" value={props.filename} onChange={(e) => props.setFilename(e.target.value)} placeholder="filename.txt" />
         <button className="primary" onClick={save} disabled={busy}>Save to prompt/</button>
       </div>
-      {saveStatus && <div className="status">{saveStatus}</div>}
     </>
   );
 }
@@ -95,11 +95,16 @@ export default function WritePrompt() {
     setFontSize(v);
     localStorage.setItem("promptFontSize", String(v));
   };
-  const onSaved = (path: string) => update({ promptPath: path, promptsBump: sync.promptsBump + 1 });
+  const onSaved = (path: string, name: string) => {
+    update({ promptPath: path, promptsBump: sync.promptsBump + 1 });
+    // Fileサブタブの選択を保存したファイルへ合わせる(合わせないと再Load時に
+    // 選択が古いファイルのままで、その内容で上書きされる——ユーザー報告 2026-07-16)
+    setSelected(name);
+  };
   // 保存後、Newタブのファイル名を新しいタイムスタンプへ更新する(続けて次のプロンプトを
   // 作った時に、直前のファイルを意図せず上書きしないため——ユーザー報告 2026-07-15)
-  const onSavedNew = (path: string) => {
-    onSaved(path);
+  const onSavedNew = (path: string, name: string) => {
+    onSaved(path, name);
     setNewFilename(tsName());
   };
 

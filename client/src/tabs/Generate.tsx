@@ -118,6 +118,7 @@ export default function Generate() {
           </button>
           <button className="danger" onClick={stop} disabled={!running}>Stop</button>
           {status === "done" && <span className="status ok">✅ finished</span>}
+          {status === "stopped" && <span className="status">⏹ stopped</span>}
           {status === "error" && <span className="status error">❌ failed — check the log</span>}
         </div>
         {message && <div className="status">{message}</div>}

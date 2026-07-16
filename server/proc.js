@@ -17,10 +17,13 @@ export function condaPythonModuleArgs(env, module, args = []) {
   return [CONDA, ["run", "--no-capture-output", "-n", env, "python", "-u", "-m", module, ...args]];
 }
 
-/** コマンドを実行し、stdout+stderr を行コールバックへ流す。resolve は exit code。 */
-export function streamCommand(cmd, args, { cwd = BASE_DIR, onLine, signal } = {}) {
+/** コマンドを実行し、stdout+stderr を行コールバックへ流す。resolve は exit code。
+ * detached: true でプロセスグループを新設する(Stop時に conda run だけでなく、その配下で
+ * 実際にGPU処理を行う python 子プロセスまで確実に止めるため——conda run はSIGTERMを
+ * 子へ転送しないことがあり、pid一つだけkillしても実処理が動き続ける事故があった)。 */
+export function streamCommand(cmd, args, { cwd = BASE_DIR, onLine, signal, detached = false } = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { cwd, env: process.env });
+    const proc = spawn(cmd, args, { cwd, env: process.env, detached });
     if (signal) signal.proc = proc;
     let buf = "";
     const feed = (chunk) => {
