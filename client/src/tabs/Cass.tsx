@@ -70,6 +70,11 @@ export default function Cass() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [drafting, setDrafting] = useState(false);
+  // ACE-Step未設定(.envにACESTEP_URL/ACESTEP_MODEL無し)なら「Generate」選択肢を隠す
+  const [acestepConfigured, setAcestepConfigured] = useState(false);
+  useEffect(() => {
+    api<{ configured: boolean }>("/api/acestep-config").then((r) => setAcestepConfigured(r.configured));
+  }, []);
 
   const bgmJob = useJob(bgmJobId);
   const { log, state, status } = useJob(jobId);
@@ -156,7 +161,7 @@ export default function Cass() {
         <div className="row">
           <h3>BGM source</h3>
           <SegRadio
-            options={["File", "Generate"] as const}
+            options={acestepConfigured ? (["File", "Generate"] as const) : (["File"] as const)}
             labels={{ File: "File", Generate: "Generate (ACE-Step 1.5)" }}
             value={bgmMode}
             onChange={setBgmMode}

@@ -71,6 +71,13 @@ app.get("/api/i2v-engine", (req, res) => {
   res.json({ engine: readEnv().I2V_VIDEO_ENGINE || "default" });
 });
 
+// ACE-Step-1.5(BGM生成)が.envに設定済みか。CASSタブの「Generate」選択肢表示切替に使う
+// (未設定でも音源分離・BGM合成本体はFileモードで利用可能なため、その選択肢だけ隠す)
+app.get("/api/acestep-config", (req, res) => {
+  const env = readEnv();
+  res.json({ configured: Boolean(env.ACESTEP_URL?.trim() && env.ACESTEP_MODEL?.trim()) });
+});
+
 // ---------- Library(閲覧専用: 全run横断ビューア) ----------
 app.get("/api/library/runs", (req, res) => {
   const { engine, since, q } = req.query;

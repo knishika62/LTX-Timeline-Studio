@@ -48,9 +48,11 @@ CLIの詳しい使い方(オプション・プロンプト形式・`--retry`/`--
 - `process.sh`実行には`ffmpeg`/`ffprobe`が必須
 - ハーネスの⑤CASSタブから使う場合、`server/cass.js`が内部で`CASS/separate.py`・`CASS/process.sh`をconda env越しに呼び出す
 
-### BGM生成(ACE-Step-1.5)
+### BGM生成(ACE-Step-1.5、オプション)
 
 BGM生成機能は [ACE-Step-1.5](https://github.com/ace-step/ACE-Step-1.5) のAPIサーバーを使用する。このリポジトリには含まれないため、別途環境構築・動作確認が必要。
+
+**これは必須ではない。** 上記の「音源分離・BGM合成」(speech/music/sfxの分離・差し替え)自体はACE-Step無しでも問題なく使える。`.env`に`ACESTEP_URL`/`ACESTEP_MODEL`を設定しない場合、ハーネスの⑤CASSタブでは「Generate」(自動生成)の選択肢が自動的に非表示になり、代わりに「File」モード(手持ちのBGM音声ファイル: mp3/wav/m4aをアップロードまたは選択)でBGMを差し替えられる。
 
 - ACE-Step-1.5側で `start_api_server.bat`(Windows)または `start_api_server.sh`(Linux/Mac)を起動しておくこと
 - `.env` の `ACESTEP_URL`(APIサーバーのURL)・`ACESTEP_MODEL` をそのサーバーに合わせて設定

@@ -4,7 +4,7 @@ import type { SVGProps } from "react";
  * 崩れる(2026-07-15ユーザー指摘: 🔍✂️🗑が「不細工」)ため、stroke統一のSVGへ置き換える。 */
 export type IconName =
   | "search" | "scissors" | "trash" | "undo" | "refresh" | "upload" | "pencil"
-  | "music" | "play" | "save" | "close" | "chevronLeft" | "chevronRight" | "stop";
+  | "music" | "play" | "save" | "close" | "chevronLeft" | "chevronRight" | "stop" | "copy";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></>,
@@ -21,6 +21,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
   chevronLeft: <polyline points="15 18 9 12 15 6" />,
   chevronRight: <polyline points="9 18 15 12 9 6" />,
   stop: <rect x="4" y="4" width="16" height="16" rx="2" />,
+  copy: <><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>,
 };
 
 export function Icon({ name, size = 16, ...rest }: { name: IconName; size?: number } & SVGProps<SVGSVGElement>) {

@@ -128,6 +128,7 @@ export default function Library() {
   const [detail, setDetail] = useState<LibraryRunDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [promptTab, setPromptTab] = useState<"source" | "generated">("source");
+  const [copied, setCopied] = useState(false);
 
   // 検索テキストは300msデバウンスしてから実際のクエリに反映(キー入力のたびに叩かない)
   useEffect(() => {
@@ -248,11 +249,29 @@ export default function Library() {
                     生成後 (prompts.txt)
                   </button>
                 </div>
-                <pre className="library-prompt-raw">
-                  {promptTab === "source"
-                    ? (detail.sourceRaw ?? "(元プロンプトファイルが見つかりません — 削除・リネームされた可能性があります)")
-                    : (detail.promptsRaw || "(prompts.txt が見つかりません)")}
-                </pre>
+                <div style={{ position: "relative" }}>
+                  <button
+                    className="icon"
+                    title={copied ? "Copied!" : "Copy to clipboard"}
+                    disabled={promptTab === "source" ? !detail.sourceRaw : !detail.promptsRaw}
+                    style={{ position: "absolute", top: 8, right: 8 }}
+                    onClick={() => {
+                      const text = promptTab === "source" ? detail.sourceRaw : detail.promptsRaw;
+                      if (!text) return;
+                      navigator.clipboard.writeText(text).then(() => {
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      });
+                    }}
+                  >
+                    <Icon name="copy" size={14} /> {copied ? "Copied!" : "Copy"}
+                  </button>
+                  <pre className="library-prompt-raw">
+                    {promptTab === "source"
+                      ? (detail.sourceRaw ?? "(元プロンプトファイルが見つかりません — 削除・リネームされた可能性があります)")
+                      : (detail.promptsRaw || "(prompts.txt が見つかりません)")}
+                  </pre>
+                </div>
 
                 {/* Promptより下は最終形に近い順(CASS出力→Final→Segments→Keyframes→分離音源、
                     ユーザー指定 2026-07-15): 完成度の高いものから確認できるように */}
