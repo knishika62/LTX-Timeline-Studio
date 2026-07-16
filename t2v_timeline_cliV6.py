@@ -38,7 +38,7 @@ from timeline_common import (
     _AUDIO_HEADER_RE, _enforce_animal_sound,
     _HANDS_ENTER_RE, _enforce_attached_hands,
     _enforce_dialogue_attribution,
-    _HAND_PROPS, _BOTH_HANDS_RE, _hand_budget_violation,
+    _HAND_PROPS, _BOTH_HANDS_RE, _hand_budget_violation, _selfie_phone_redundancy,
     _RESERVED_PROP_KEYWORDS, _reserved_props_for,
     _ACTION_STOPWORDS, _ACTION_SYNONYMS, _missing_action_elements, _scene_reject_reason,
     _strip_reference_echo,
@@ -55,6 +55,7 @@ from timeline_common import (
     _extract_state_from_intent,
     _plan_creative_intent, _plan_shot_directions, _audit_shot_variety, _write_scene_description,
     _plan_creative_intent_json, _plan_shot_directions_json, _audit_shot_variety_json,
+    _resolve_state_continuity_json, _flatten_state,
 )
 
 
@@ -293,21 +294,21 @@ For EACH segment, decide whether the scene's persistent LOCATION (name the actua
 
 For each segment, the "state" value must be EXACTLY ONE of the following two things — nothing else is valid:
 (a) The literal text "NO CHANGE" — use this if and only if location, time-of-day/lighting, weather, and appearance are ALL identical to the previous segment.
-(b) A COMPLETE description covering location, time-of-day/lighting, weather, and everything about her current appearance — required for segment 1 (establish the baseline from the character/location/style reference), and required for any segment where the action explicitly changes any of these (e.g. "goes to sleep" → night; "changes into pajamas" → new outfit; "steps outside into the rain" → weather changes; "walks into the cafe" → location changes).
+(b) An OBJECT with exactly four keys — "location", "time_lighting", "weather", "appearance" — covering location, time-of-day/lighting, weather, and everything about her current appearance beyond her fixed identity. Required for segment 1 (establish the baseline from the character/location/style reference), and required for any segment where the action explicitly changes any of these (e.g. "goes to sleep" → night; "changes into pajamas" → new outfit; "steps outside into the rain" → weather changes; "walks into the cafe" → location changes).
 
 STRICT RULES:
-- NEVER write a partial description, a reference ("same as segment 5", "same as before"), an abbreviation, or a placeholder ("none mentioned") — only options (a) or (b) above exist. This also includes paraphrased "nothing changed" sentences like "Same location and time; same outfit and accessories" — that is NOT option (b), it names no actual garment/location words and is just option (a) in disguise. If nothing changed, write the literal text "NO CHANGE" and nothing else.
-- When you write a full description (b), restate EVERYTHING that is still true, not just what changed — the next segment's "NO CHANGE" depends on this being complete.
+- NEVER write a partial object (missing a key), a reference ("same as segment 5", "same as before"), an abbreviation, or a placeholder ("none mentioned") in any field — only options (a) or (b) above exist. This also includes paraphrasing "nothing changed" as a sentence — that is NOT option (b); if nothing changed, write the literal text "NO CHANGE" and nothing else.
+- When you write the object (b), every one of the four fields must restate EVERYTHING that is still true for that category, not just what changed — the next segment's "NO CHANGE" depends on this being complete. Never leave a field empty unless that category genuinely has nothing to report.
 - This matters most for changes that are easy to miss: once night falls, every later segment stays night until something explicitly says otherwise (sunrise, an alarm, etc.) — the same for weather and for a change of clothes.
 - ⚠️ GET THE TIMING RIGHT: if a segment's OWN action contains the change (e.g. segment 4 says "goes to sleep"), the NEW state applies STARTING AT segment 4 itself — never delay it to segment 5.
 - ⚠️ ONE-DIRECTIONAL: the rule above only forbids DELAYING a stated change to a later segment than the one whose action actually describes it. It does NOT mean applying the change EARLIER. You can see every segment's action at once in the list below — a later segment's action may already describe a new outfit, location, or time-of-day. Do NOT anticipate it. Every segment BEFORE the one whose action states the change must still carry the OLD state (or "NO CHANGE"), even though the future change is visible to you in the list.
 
-Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no commentary before or after it. Each object must have exactly these keys: "segment" (integer, 1-based), "state". Example for a 4-segment timeline:
+Output: ONLY a JSON array, one object per segment, nothing else — no markdown code fences, no commentary before or after it. Each object must have exactly these keys: "segment" (integer, 1-based), "state" (either the literal string "NO CHANGE", or an object with "location"/"time_lighting"/"weather"/"appearance" keys). Example for a 4-segment timeline:
 [
-  {"segment": 1, "state": "A living room, daytime, plain everyday top and pants, hair down."},
+  {"segment": 1, "state": {"location": "A living room", "time_lighting": "daytime", "weather": "", "appearance": "plain everyday top and pants, hair down"}},
   {"segment": 2, "state": "NO CHANGE"},
   {"segment": 3, "state": "NO CHANGE"},
-  {"segment": 4, "state": "A kitchen, evening, different top, hair tied back."}
+  {"segment": 4, "state": {"location": "A kitchen", "time_lighting": "evening", "weather": "", "appearance": "different top, hair tied back"}}
 ]\
 """
 
@@ -377,6 +378,7 @@ _LINT_CHECKS: dict[str, str] = {
     "C17": 'GARMENTS PRESENT: the outfit named in the "state" (current established clothing) must appear somewhere in the prompt using the same garment words — do not let the outfit compress away into nothing when the shot describes other things, since an unmentioned outfit becomes the image model\'s own invented guess instead of the specified one.',
     "C18": 'STATE DETAILS PRESENT: "state" is the absolute, authoritative source for everything about her current appearance (hairstyle, accessories, anything beyond her fixed identity) — every detail it specifies (e.g. a specific hairstyle like "messy ponytail with side-swept bangs") must actually appear in the prompt, not just a generic fallback from the character sentence (e.g. plain "black wavy hair" alone is NOT enough if state specifies more). Weave the full state detail in naturally.',
     "C19": 'UNGROUNDED SECONDARY MOTION: this prompt mentions an animal, or laundry/a clothesline, that the timeline action for THIS segment never calls for. These are hallucinated additions copied from the Scene Writer\'s own illustrative examples, not something that actually happens in this shot. Remove them and replace with a neutral environmental detail (light, shadow, breeze, an already-present background element) instead.',
+    "C20": 'SELFIE ALREADY IMPLIES THE PHONE: "selfie" by itself already means she is holding up her phone to film/photograph herself — do NOT additionally write "holding a smartphone", "holding her phone", "gripping her phone", etc. as a separate action. This double-describes the same phone and causes a third hand to be generated. Remove the redundant explicit phone-holding phrase and keep "selfie" alone.',
 }
 
 
@@ -504,6 +506,11 @@ def _detect_violations(ltx_prompt: str, direction: str, orientation: str, reserv
     # C16: 手の本数超過(傘で片手が塞がっているのに「both hands」) → 3本目の腕が生成される
     if _hand_budget_violation(ltx_prompt):
         ids.append("C16")
+
+    # C20: "selfie"がスマホを持つ行為を既に含意するのに、別途「holding a smartphone」等の
+    # 明示描写が同居 → 暗黙+明示の2つのスマホ/3本目の手が生成される(2026-07-16)
+    if _selfie_phone_redundancy(ltx_prompt):
+        ids.append("C20")
 
     # C17: STATEが指定する衣装がプロンプトから欠落している(character_lineは2026-07-06以降
     # 衣装を持たないため、stateが唯一の情報源)。ショットスケールに応じて必要な部分だけ要求する
@@ -1272,7 +1279,8 @@ async def main() -> None:
     )
     creative_lines = [f"INTENT: {d['intent']} | HIGHLIGHT: {d['highlight']} | TEMPO: {d['tempo']}" for d in creative_json]
     state_lines_raw = [d["state"] for d in state_json]
-    resolved_states = _resolve_state_continuity(state_lines_raw)
+    resolved_state_dicts = _resolve_state_continuity_json(state_lines_raw)
+    resolved_states = [_flatten_state(d) for d in resolved_state_dicts]
     intents = [f"{c} | STATE: {s}" for c, s in zip(creative_lines, resolved_states)]
     for i, (seg, intent) in enumerate(zip(segments, intents), 1):
         print(f"[t2v-tl6]   [{i:02d}] {seg['label']:>14}  {intent}")

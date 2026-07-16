@@ -612,6 +612,23 @@ def _hand_budget_violation(ltx_prompt: str) -> bool:
     return False
 
 
+# C20/KF8: "selfie"は「スマホを持って自分を撮る」行為を既に含意する(=暗黙にスマホを1つ手にしている)。
+# これに加えて「holding a smartphone」のような明示的な保持描写が同居すると、暗黙のスマホと明示の
+# スマホの2つとして生成され、結果的に手が3本になる事故が実データで発覚した(2026-07-16、i2v/t2v両方)。
+_SELFIE_RE = re.compile(r"\bselfies?\b", re.IGNORECASE)
+_EXPLICIT_PHONE_HOLD_RE = re.compile(
+    r"\b(?:holds?|holding|grips?|gripping|raises?|raising|lifts?|lifting)\b[^.;]*"
+    r"\b(?:smart[- ]?phone|phone|cell[- ]?phone)\b",
+    re.IGNORECASE,
+)
+
+
+def _selfie_phone_redundancy(text: str) -> bool:
+    """"selfie"という語と、別途スマホを明示的に持つ描写が同一テキスト内に同居しているか。
+    True なら「暗黙のスマホ(selfie)+明示のスマホ」の二重描写で、手が3本になるリスクがある。"""
+    return bool(_SELFIE_RE.search(text) and _EXPLICIT_PHONE_HOLD_RE.search(text))
+
+
 # 他セグメントの主役プロップ(そのセグメント以外に出すと主役シーンの意味が薄れる)
 _RESERVED_PROP_KEYWORDS: dict[str, tuple[str, ...]] = {
     "laundry": ("laundry", "clothesline", "clotheslines"),
@@ -1541,6 +1558,49 @@ async def _chat_json(
                 })
     assert last_error is not None
     raise last_error
+
+
+def _flatten_state(state: dict) -> str:
+    """Pass0b(JSON版)の構造化STATE({"location":..., "time_lighting":..., "weather":...,
+    "appearance":...})を、既存の消費側(Pass2のintent_block・Pass3/3a/3bのcurrent_state・
+    C17 _garments_missing・C18 _state_details_missingなど)がそのまま扱えるフラットな
+    カンマ区切り文字列に変換する。**location→time_lighting→weather→appearanceの順は
+    決め打ちではなく必須**: _state_details_missing(1230行)がstate.split(",")した先頭要素を
+    「場所」として特別扱いしclauses[1:]だけを検品対象にする設計になっている
+    (場所は別ルールで担当、というdocstring明記の前提)。_garments_missing・
+    _enforce_garments_presentも同じ前提。この順序を守る限り、これら3つの既存関数は
+    無改修のままフラット化後の文字列を正しく処理できる。"""
+    fields = [state.get("location", ""), state.get("time_lighting", ""), state.get("weather", ""), state.get("appearance", "")]
+    return ", ".join(f.strip() for f in fields if f and f.strip())
+
+
+def _resolve_state_continuity_json(state_lines: list) -> list[dict]:
+    """_resolve_state_continuity(1078行、無編集のまま残す)のdict版。Pass0b(JSON版)は
+    各セグメントの"state"値として、リテラル文字列"NO CHANGE"(変化なし)か、
+    {"location":..., "time_lighting":..., "weather":..., "appearance":...}という
+    オブジェクト(変化あり)のどちらかを返す。文字列値は_STATE_REF_RE("same as N"等の
+    保険)・_NO_CHANGE_RE(リテラルNO CHANGE、およびパラフレーズ変種の保険)で判定し、
+    直前の解決済みdictを引き継ぐ。dict値はそのまま採用・保持する
+    (JSON化は構造的な誤帰属を防ぐだけで、モデルが"same as 11"等と書く content-level の癖までは
+    変えないため、_STATE_REF_RE/_NO_CHANGE_REによる吸収ロジックは元の設計のまま残す)。"""
+    resolved: list[dict] = []
+    for i, raw in enumerate(state_lines):
+        if isinstance(raw, dict):
+            resolved.append(raw)
+            continue
+        text = (raw or "").strip()
+        ref = _STATE_REF_RE.match(text)
+        if ref:
+            token = ref.group(1).lower()
+            target_idx = i - 1 if token in ("previous", "prior") else int(token) - 1
+            resolved.append(resolved[target_idx] if 0 <= target_idx < len(resolved) else {})
+        elif not text or _NO_CHANGE_RE.match(text):
+            resolved.append(resolved[i - 1] if i > 0 else {})
+        else:
+            # 契約違反(文字列だが"NO CHANGE"でも参照でもない、自由文のまま書かれた)場合の
+            # フォールバック——existing appearanceフィールドへ丸ごと詰めて情報を失わない
+            resolved.append({"appearance": text})
+    return resolved
 
 
 async def _plan_creative_intent_json(
