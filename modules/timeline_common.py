@@ -72,7 +72,7 @@ def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
     "Timeline:" ヘッダー行は省略可(最初のタイムスタンプ前を全体とみなす)
     Ambience/Audio セクション名はどちらも可
     """
-    _TS_A   = re.compile(r"^(\d+)[–\-](\d+)s:\s*(.+)")
+    _TS_A   = re.compile(r"^(\d+(?:\.\d+)?)[–\-](\d+(?:\.\d+)?)s:\s*(.+)")  # 小数秒も許容(2026-07-18)
     # 矢印(→/>)・コロンは任意。無ければ空白で区切られた説明文をそのまま拾う
     # ("00:00–00:03 description" — 矢印無しの最も普通な書き方、2026-07-16ユーザー報告)。
     # 説明文が無い行(Format Cの単独タイムスタンプ)は `(.+)` が1文字以上を要求するため
@@ -80,7 +80,12 @@ def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
     _TS_B   = re.compile(r"^(\d{1,2}):(\d{2})[–\-](\d{1,2}):(\d{2})\s*(?:[→>:]\s*)?(.+)")
     _TS_C   = re.compile(r"^(\d{1,2}):(\d{2})[–\-](\d{1,2}):(\d{2})\s*$")
     _TS_D   = re.compile(r"^\[(\d{1,2}):(\d{2})[–\-](\d{1,2}):(\d{2})\]\s*(.+)")   # Format D: "[0:03–0:06] desc"
-    _TS_ANY = re.compile(r"^\[?\d{1,2}:\d{2}[–\-]\d{1,2}:\d{2}|^\d+[–\-]\d+s:")
+    # Format F: "[0s – 2s]" 単独行(秒表記のブラケット、次行以降に説明。Format Cの秒版)。
+    # "s"は各数値ごとに省略可、ダッシュ前後の空白も任意("[0-2s]"/"[0 – 2]"等も許容)、
+    # 小数秒も許容("[4s – 6.5s]"、2026-07-18ユーザー報告)。durationはComfyUI側で
+    # 既にround(duration_s * 24)等フレーム換算しており小数対応済みのためintに丸めない
+    _TS_F   = re.compile(r"^\[(\d+(?:\.\d+)?)s?\s*[–\-]\s*(\d+(?:\.\d+)?)s?\]\s*$")
+    _TS_ANY = re.compile(r"^\[?\d{1,2}:\d{2}[–\-]\d{1,2}:\d{2}|^\d+(?:\.\d+)?[–\-]\d+(?:\.\d+)?s:|^\[\d+(?:\.\d+)?s?\s*[–\-]\s*\d+(?:\.\d+)?s?\]")
 
     # "Timeline:" ヘッダーがあればそこを境界に、なければ最初のタイムスタンプ行を起点とする
     timeline_m = re.search(r"(?i)^timeline:\s*$", text, re.MULTILINE)
@@ -88,7 +93,7 @@ def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
         global_desc    = text[:timeline_m.start()].strip()
         after_timeline = text[timeline_m.end():].strip()
     else:
-        ts_start = re.search(r"(?m)^\*{0,2}(\[?\d{1,2}:\d{2}[–\-]\d{1,2}:\d{2}|\d+[–\-]\d+s:)", text)
+        ts_start = re.search(r"(?m)^\*{0,2}(\[?\d{1,2}:\d{2}[–\-]\d{1,2}:\d{2}|\d+(?:\.\d+)?[–\-]\d+(?:\.\d+)?s:|\[\d+(?:\.\d+)?s?\s*[–\-]\s*\d+(?:\.\d+)?s?\])", text)
         if not ts_start:
             raise ValueError("'Timeline:' ヘッダーもタイムスタンプも見つかりません")
         global_desc    = text[:ts_start.start()].strip()
@@ -109,10 +114,10 @@ def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
         # Markdown bold/italic (**text** や *text*) をタイムスタンプ前後から除去
         line = re.sub(r"^\*+|\*+$", "", lines[i].strip()).strip()
 
-        # Format A: "0–2s: description"
+        # Format A: "0–2s: description"(小数秒も許容)
         m = _TS_A.match(line)
         if m:
-            start_s, end_s = int(m.group(1)), int(m.group(2))
+            start_s, end_s = float(m.group(1)), float(m.group(2))
             segments.append({"start": start_s, "end": end_s, "duration": end_s - start_s,
                               "action": m.group(3).strip(), "label": f"{m.group(1)}-{m.group(2)}s"})
             i += 1; continue
@@ -137,12 +142,11 @@ def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
                               "label": f"{m.group(1)}:{m.group(2)}-{m.group(3)}:{m.group(4)}"})
             i += 1; continue
 
-        # Format C: "00:00–00:02" 単独行 → 次行以降を説明として収集
-        m = _TS_C.match(line)
+        # Format F: "[0s – 2s]" 単独行(秒、小数可) → 次行以降を説明として収集(Format Cの秒版)
+        m = _TS_F.match(line)
         if m:
-            start_s = int(m.group(1)) * 60 + int(m.group(2))
-            end_s   = int(m.group(3)) * 60 + int(m.group(4))
-            label   = f"{m.group(1)}:{m.group(2)}-{m.group(3)}:{m.group(4)}"
+            start_s, end_s = float(m.group(1)), float(m.group(2))
+            label = f"{m.group(1)}-{m.group(2)}s"
             i += 1
             action_lines: list[str] = []
             while i < len(lines):
@@ -154,6 +158,25 @@ def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
                 i += 1
             segments.append({"start": start_s, "end": end_s, "duration": end_s - start_s,
                               "action": " ".join(action_lines), "label": label})
+            continue
+
+        # Format C: "00:00–00:02" 単独行 → 次行以降を説明として収集
+        m = _TS_C.match(line)
+        if m:
+            start_s = int(m.group(1)) * 60 + int(m.group(2))
+            end_s   = int(m.group(3)) * 60 + int(m.group(4))
+            label   = f"{m.group(1)}:{m.group(2)}-{m.group(3)}:{m.group(4)}"
+            i += 1
+            action_lines2: list[str] = []
+            while i < len(lines):
+                nl = re.sub(r"^\*+|\*+$", "", lines[i].strip()).strip()
+                if _TS_ANY.match(nl):
+                    break
+                if nl:
+                    action_lines2.append(nl)
+                i += 1
+            segments.append({"start": start_s, "end": end_s, "duration": end_s - start_s,
+                              "action": " ".join(action_lines2), "label": label})
             continue
 
         i += 1
@@ -293,6 +316,42 @@ def _write_direct_prompts_txt(
         lines.append(f"--- Keyframe prompt ---\n{keyframe_prompt}")
     lines.append(f"--- LTX prompt ---\n{main_prompt}\n")
     prompts_txt.write_text("\n".join(lines), encoding="utf-8")
+
+
+_SEG_HEADER_RE = re.compile(r"(?m)^\[(\d+)/(\d+)\]\s+(\S+)\s+\((\d+(?:\.\d+)?)s\)\s*$")  # 小数秒も許容(2026-07-18)
+
+
+def _parse_prompts_txt(path: Path) -> tuple[dict, list[dict]]:
+    """既存runのprompts.txtをパースし、ヘッダーとセグメント別プロンプトを復元する(リトライ用)。
+    t2v/i2v共通実装(t2vでは`--- Keyframe prompt ---`区切りが存在しないため kf_prompt は常に空文字)。"""
+    text = path.read_text(encoding="utf-8")
+    heads = list(_SEG_HEADER_RE.finditer(text))
+    if not heads:
+        raise ValueError(f"{path.name} にセグメントが見つかりません")
+
+    header: dict = {}
+    for line in text[: heads[0].start()].splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            header[k.strip()] = v.strip()
+
+    segments: list[dict] = []
+    for i, m in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+        block = text[m.end(): end]
+        pm = re.search(r"--- LTX prompt ---\n", block)
+        if not pm:
+            raise ValueError(f"セグメント{m.group(1)}の '--- LTX prompt ---' が見つかりません")
+        km = re.search(r"--- Keyframe prompt ---\n", block)
+        kf_prompt = block[km.end(): pm.start()].strip() if km else ""
+        segments.append({
+            "num":       int(m.group(1)),
+            "label":     m.group(3),
+            "duration":  float(m.group(4)),
+            "prompt":    block[pm.end():].strip(),
+            "kf_prompt": kf_prompt,
+        })
+    return header, segments
 
 
 async def _run_upscale(prefix: str, run_id: str | None, log_prefix: str) -> None:

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { PROMPT_DIR, GENERATED_DIR, PREFIXES } from "./config.js";
 import { runBridge } from "./proc.js";
+import { SEG_HEADER_RE as PROMPTS_SEG_HEADER_RE } from "./scan.js";
 
 /** prompt/ の .txt 一覧(名前降順 = タイムスタンプ命名なら新しい順) */
 export function listPromptFiles() {
@@ -52,8 +53,6 @@ export async function readSegmentPrompt(engine, runId, segNum) {
   const res = await runBridge(["parse_prompts_txt", engine, promptsPath]);
   return res.segments.find((s) => s.num === segNum) ?? null;
 }
-
-const PROMPTS_SEG_HEADER_RE = /^\[(\d+)\/(\d+)\]\s+\S+\s+\(\d+s\)\s*$/gm;
 
 /** 指定セグメントの `--- LTX prompt ---`(i2vは `--- Keyframe prompt ---` も)を書き換える。
  * Gradio版 _write_segment_prompt のJS移植(ハーネス固有コード)。既存CLIの

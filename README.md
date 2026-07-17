@@ -171,15 +171,16 @@ Ambience: [アンビエンス/環境音の説明]
 - `Audio:` でも `Ambience:` でも可。内容が同一行でも次行でも対応
 - **タイムライン区間が無い1本の物語文でも可**(Pass -1が自動でビート分割)。各ビートは3秒以上、合計尺に上限は設けない
 
-### タイムスタンプ形式(5種対応・混在可)
+### タイムスタンプ形式(6種対応・混在可)
 
 | 形式 | 例 |
 |---|---|
-| A — 秒・1行 | `0–2s: She walks down the alley` |
+| A — 秒・1行(小数可) | `0–2s: She walks down the alley` / `0–1.5s: She waves` |
 | B — MM:SS・1行(矢印/コロンは省略可) | `00:00–00:03 She waves at the camera` / `00:00–00:03 → She waves at the camera` |
 | C — MM:SS単独行 + 次行に説明 | `00:00–00:02`(改行)`She sits on a step tying laces.` |
 | D — ブラケット・1行 | `[0:03–0:06] She crouches to feed a cat` |
 | E — **bold**タイムスタンプ + 次行 | `**00:00–00:02**`(改行)`She sits on a step tying laces.` |
+| F — 秒・ブラケット単独行 + 次行以降に説明(小数可) | `[0s – 1.5s]`(改行)`She waves at the camera.` |
 
 ### 出力
 

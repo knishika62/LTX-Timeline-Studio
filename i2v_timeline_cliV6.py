@@ -38,7 +38,7 @@ from modules.timeline_common import (
     _fmt_elapsed,
     _fmt_duration,
     _parse_prompt, _seg_video_path, _concat_segments, _run_upscale,
-    _split_direct_prompt, _write_direct_prompts_txt,
+    _split_direct_prompt, _write_direct_prompts_txt, _parse_prompts_txt,
     _auto_segment_narrative, _LINT_MAX_ATTEMPTS,
     _has_word, _animals_in, _stem, _ANIMAL_ABSENT_RE,
     _ANIMAL_BEHIND_RE, _ANIMAL_BEHIND_LOOSE_RE, _enforce_animal_beside,
@@ -632,39 +632,6 @@ _ASPECT = {
         "compose": "Always compose vertically — subject centered in a tall frame, top-to-bottom depth (sky/ceiling to ground), vertical architectural elements (poles, walls, doorways). Never compose as a wide horizontal shot.",
     },
 }
-
-
-def _parse_prompts_txt(path: Path) -> tuple[dict, list[dict]]:
-    """既存runのprompts.txtをパースし、ヘッダーとセグメント別のKeyframe/Motionプロンプトを復元する(リトライ用)。"""
-    text = path.read_text(encoding="utf-8")
-    seg_head = re.compile(r"(?m)^\[(\d+)/(\d+)\]\s+(\S+)\s+\((\d+)s\)\s*$")
-    heads = list(seg_head.finditer(text))
-    if not heads:
-        raise ValueError(f"{path.name} にセグメントが見つかりません")
-
-    header: dict = {}
-    for line in text[: heads[0].start()].splitlines():
-        if ":" in line:
-            k, v = line.split(":", 1)
-            header[k.strip()] = v.strip()
-
-    segments: list[dict] = []
-    for i, m in enumerate(heads):
-        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
-        block = text[m.end(): end]
-        pm = re.search(r"--- LTX prompt ---\n", block)
-        if not pm:
-            raise ValueError(f"セグメント{m.group(1)}の '--- LTX prompt ---' が見つかりません")
-        km = re.search(r"--- Keyframe prompt ---\n", block)
-        kf_prompt = block[km.end(): pm.start()].strip() if km else ""
-        segments.append({
-            "num":       int(m.group(1)),
-            "label":     m.group(3),
-            "duration":  int(m.group(4)),
-            "prompt":    block[pm.end():].strip(),
-            "kf_prompt": kf_prompt,
-        })
-    return header, segments
 
 
 _DEFAULT_STYLE_TAIL = "photorealistic, candid documentary style, natural light"

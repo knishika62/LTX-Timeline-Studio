@@ -156,7 +156,8 @@ export function listBgmFiles() {
   return items.map(({ name, path: p, mt }) => ({ name, path: p, mt }));
 }
 
-const SEG_HEADER_RE = /^\[(\d+)\/(\d+)\]\s+(\S+)\s+\(\d+s\)\s*$/gm;
+// prompts.txt のセグメント見出し正規表現(唯一の定義、prompts.jsもここから読む)
+export const SEG_HEADER_RE = /^\[(\d+)\/(\d+)\]\s+(\S+)\s+\(\d+(?:\.\d+)?s\)\s*$/gm; // 小数秒も許容(2026-07-18)
 
 /** prompts.txt のセグメント見出し([N/total] LABEL (Xs))から期待セグメント一覧を得る。
  * 生成・リトライ中、まだファイルが無い/一時的に消えたセグメントの
