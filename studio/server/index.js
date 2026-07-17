@@ -116,6 +116,13 @@ app.delete("/api/library/runs/:engine/:runId", (req, res) => {
   if (!PREFIXES[req.params.engine]) return res.status(400).json({ error: `unknown engine: ${req.params.engine}` });
   const result = deleteLibraryRun(req.params.engine, req.params.runId);
   deleteEditStage(req.params.engine, req.params.runId); // studio専用sidecarもrunと一緒に消す
+  // t2vのstudio専用サムネイル(ensureT2vThumbnailが生成)も、実harness側のdeleteLibraryRunの
+  // 削除対象(既存スキャン正規表現ベース)には含まれないので道連れで消す
+  // (2026-07-17ユーザー指摘: run削除時に関連サムネイルが残っていた)。
+  if (req.params.engine === "t2v") {
+    const thumbPath = path.join(GENERATED_DIR, `t2v6_${req.params.runId}_seg01_thumb.png`);
+    if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+  }
   res.json(result);
 });
 app.get("/api/duration", wrap(async (req, res) => {

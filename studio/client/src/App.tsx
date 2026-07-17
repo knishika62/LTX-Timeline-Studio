@@ -716,6 +716,19 @@ export default function App() {
       setEditPreviewing(false);
     }
   };
+  /** CASS/Upscale完了時にdetailを更新する(finals/cass.videosの一覧を再スキャン)。
+   * 2026-07-17ユーザー指摘: CASSした動画がUpscaleのファイル一覧に出ないバグ — onCassResult/
+   * onUpscaleResultがdetailを再取得していなかったため、finalOptions(detail)が古いままだった。 */
+  const refreshDetail = async () => {
+    if (selection.kind !== "run") return;
+    try {
+      const d = await api<LibraryRunDetail>(`/api/library/runs/${selection.engine}/${selection.runId}`);
+      setDetail(d);
+    } catch (e) {
+      appendLog(`[studio] Error refreshing run detail: ${(e as Error).message}`);
+    }
+  };
+
   const commitFinal = async () => {
     if (selection.kind !== "run") return;
     setEditCommitting(true);
@@ -1101,8 +1114,8 @@ export default function App() {
               onPreview={previewFinal}
               onCommit={commitFinal}
               onLog={appendLog}
-              onCassResult={(path) => { setCassPreviewPath(path); setView("cass"); }}
-              onUpscaleResult={(path) => { setUpscalePreviewPath(path); setView("upscale"); }}
+              onCassResult={(path) => { setCassPreviewPath(path); setView("cass"); refreshDetail(); }}
+              onUpscaleResult={(path) => { setUpscalePreviewPath(path); setView("upscale"); refreshDetail(); }}
               activeView={selection.view}
               previewing={editPreviewing}
               committing={editCommitting}
