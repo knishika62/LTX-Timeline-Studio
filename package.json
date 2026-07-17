@@ -8,7 +8,10 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "build": "npm --prefix client run build",
-    "postinstall": "npm --prefix client install"
+    "postinstall": "npm --prefix client install",
+    "studio:start": "node studio/server/index.js",
+    "studio:dev": "node --watch studio/server/index.js",
+    "studio:build": "npm --prefix studio/client run build"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

@@ -16,3 +16,6 @@ __pycache__/
 CLAUDE.md
 MEMO.md
 AGENTS.md
+studio/
+server/
+client/
