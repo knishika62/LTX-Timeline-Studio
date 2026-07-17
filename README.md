@@ -1,4 +1,4 @@
-# LTX Timeline Harness (Node.js)
+# LTX Timeline
 
 ## 概要
 
@@ -8,15 +8,15 @@ Seedance等で公開されているタイムライン形式のプロンプト(`0
 LLMでLTX-2.3が理解できる単発プロンプトに変換して1シーンずつ生成し、ffmpegで連結する**ことでこの問題を解く。
 本体は `t2v_timeline_cliV6.py` / `i2v_timeline_cliV6.py`(タイムライン形式の動画生成CLI)。t2v(テキストのみ
 直接生成)/i2v(キーフレーム画像経由)の2エンジンに対応。ターミナルからCLI単体で直接使う(後述)ことも、
-ブラウザのハーネス経由で使うこともできる。分割生成ならではの武器として、セグメント単位のリトライ(悪い
+ブラウザUI(studio)経由で使うこともできる。分割生成ならではの武器として、セグメント単位のリトライ(悪い
 シーンだけ録り直す)ができる。仕組みの詳細は[末尾](#タイムライン変換の中身)を参照。
 
-**このNode.jsアプリ(ハーネス)はCLIを使いやすくするためのブラウザUIであり、CLI自体が正常に動く環境が
-無ければ機能しない。**セットアップは CLI → CASS → ComfyUI → ハーネス の順に進めること(下記4セクション)。
+**このNode.jsアプリ(studio)はCLIを使いやすくするためのブラウザUIであり、CLI自体が正常に動く環境が
+無ければ機能しない。**セットアップは CLI → CASS → ComfyUI → studio の順に進めること(下記4セクション)。
 
-ハーネスは7タブ構成(port **7864**): ①Write Prompt(LLM下書き・編集) ②Generate(生成実行)
-③Retry(セグメント単位の再生成) ④Edit(トリム・並び替え・連結) ⑤CASS(BGM合成・音源分離)
-⑥Upscale(RTX Video Super Resolution) ⑦Library(過去の全run閲覧・検索・削除)。
+studio(port **7865**)は3ペイン構成のワークステーション型UI: 左に過去の全run一覧(期間・engine・検索で絞り込み)、
+中央にタイムライン(セグメントサムネイル)+プレビュー(Segment/Final/CASS/Upscaleの切り替えタブ)、右に文脈に応じた
+Inspector(新規プロンプト作成・生成/Retry設定・セグメント編集・トリム・Final側のPrompt閲覧/Edit(トリム・並び替え・連結)/CASS(BGM合成・音源分離)/Upscale(RTX Video Super Resolution))。
 Node.js(Express+SSE)バックエンド + Vite/React/TSフロントエンド。
 
 ## CLIの設定
@@ -46,17 +46,17 @@ CLIの詳しい使い方(オプション・プロンプト形式・`--retry`/`--
 - **専用conda env(Python 3.10)が別途必要**(このリポジトリ本体のPython環境とは分離)。セットアップ手順・オプション・ライセンスは [CASS/README.md](CASS/README.md) 参照
 - 学習済み重みはZenodo(CC BY-SA 4.0)から`separate.py`実行時に自動ダウンロードされる(手動DL不要)
 - `process.sh`実行には`ffmpeg`/`ffprobe`が必須
-- ハーネスの⑤CASSタブから使う場合、`server/cass.js`が内部で`CASS/separate.py`・`CASS/process.sh`をconda env越しに呼び出す
+- studioのCASSパネルから使う場合、`server/cass.js`(studioが直接import)が内部で`CASS/separate.py`・`CASS/process.sh`をconda env越しに呼び出す
 
 ### BGM生成(ACE-Step-1.5、オプション)
 
 BGM生成機能は [ACE-Step-1.5](https://github.com/ace-step/ACE-Step-1.5) のAPIサーバーを使用する。このリポジトリには含まれないため、別途環境構築・動作確認が必要。
 
-**これは必須ではない。** 上記の「音源分離・BGM合成」(speech/music/sfxの分離・差し替え)自体はACE-Step無しでも問題なく使える。`.env`に`ACESTEP_URL`/`ACESTEP_MODEL`を設定しない場合、ハーネスの⑤CASSタブでは「Generate」(自動生成)の選択肢が自動的に非表示になり、代わりに「File」モード(手持ちのBGM音声ファイル: mp3/wav/m4aをアップロードまたは選択)でBGMを差し替えられる。
+**これは必須ではない。** 上記の「音源分離・BGM合成」(speech/music/sfxの分離・差し替え)自体はACE-Step無しでも問題なく使える。`.env`に`ACESTEP_URL`/`ACESTEP_MODEL`を設定しない場合、studioのCASSパネルでは「Generate」(自動生成)の選択肢が自動的に非表示になり、代わりに「File」モード(手持ちのBGM音声ファイル: mp3/wav/m4aをアップロードまたは選択)でBGMを差し替えられる。
 
 - ACE-Step-1.5側で `start_api_server.bat`(Windows)または `start_api_server.sh`(Linux/Mac)を起動しておくこと
 - `.env` の `ACESTEP_URL`(APIサーバーのURL)・`ACESTEP_MODEL` をそのサーバーに合わせて設定
-- ハーネス経由では`bridge.py`がライブラリとして呼び出すため意識不要だが、**ハーネスを使わずCLI単体でBGMを生成する場合は`bgm_generate_cli.py`を直接実行する**(`python -m bgm_generate_cli --help`でオプション確認)
+- studio経由では`bridge.py`がライブラリとして呼び出すため意識不要だが、**studioを使わずCLI単体でBGMを生成する場合は`bgm_generate_cli.py`を直接実行する**(`python -m bgm_generate_cli --help`でオプション確認)
 
 ## ComfyUIの設定
 
@@ -97,17 +97,18 @@ ComfyUI Manager の「Install Missing Custom Nodes」でワークフローを開
 | `T2V_VIDEO_ENGINE` | t2vの動画生成に使うComfyUIワークフローJSON(`workflows/`配下)。デフォルト`video.json`。指定JSONが無い/ノード構成が異なる場合のエラーは自己責任(バリデーション無し) |
 | `IMAGE_PROMPT_PREFIX` | 画像プロンプト冒頭に付加する品質向上prefix |
 
-## ハーネス(ブラウザUI)
+## ブラウザUI(studio)
 
 CLI・CASS・ComfyUIの動作確認ができたら、ブラウザから操作したい場合のみ以下を実行:
 
 ```bash
-npm install       # 初回のみ(client側も自動でinstallされる)
-npm run build     # フロントエンドのビルド(client/src変更時に再実行)
-npm start         # → http://localhost:7864
+npm install              # 初回のみ(studio/client側も自動でinstallされる)
+npm run studio:build     # フロントエンドのビルド(studio/client/src変更時に再実行)
+npm run studio:start     # → http://localhost:7865
 ```
 
-開発時は `npm run dev`(サーバー自動再起動)+ `npm --prefix client run dev`(Vite HMR、port 5173)。
+開発時は `npm run studio:dev`(サーバー自動再起動、`--watch`)。フロントエンド単体のHMRは
+`npm --prefix studio/client run dev`(port 5175、`/api`・`/media`をstudioサーバーへプロキシ)。
 
 ### 構成
 
@@ -117,10 +118,10 @@ npm start         # → http://localhost:7864
 | `modules/` (`timeline_common.py` / `comfyui_client.py` / `pipeline_config.py` / `prompt_generator.py`) | 実ディレクトリ | 上記CLIから呼ばれる共有ロジック(単体では実行しない) |
 | `workflows/` `CASS/` | 実ディレクトリ | ComfyUIワークフロー・音声分離ツール一式 |
 | `prompt/` `generated/` `uploads/` `CASS/{output,bgm,input,tmp}/` | 実ディレクトリ | 作業・入出力はすべてこのフォルダ直下 |
-| `.env` | 実ファイル | ハーネス・CLI共通で必要なキーを保持。編集は即時反映(再起動不要) |
-| `bridge.py` | 実ファイル | パース・連結・アップスケール・BGM生成をPython実装のまま呼ぶJSONシム(ハーネス用) |
-| `server/` | 実ファイル | Express(ESM)。SSEでログ・生成状況をライブ配信 |
-| `client/` | 実ファイル | Vite + React + TS のSPA(ダークテーマ、7タブ) |
+| `.env` | 実ファイル | studio・CLI共通で必要なキーを保持。編集は即時反映(再起動不要) |
+| `bridge.py` | 実ファイル | パース・連結・アップスケール・BGM生成をPython実装のまま呼ぶJSONシム |
+| `studio/server/` | 実ディレクトリ | studioのExpress(ESM)バックエンド(port 7865) |
+| `studio/client/` | 実ディレクトリ | studioのVite + React + TS SPA(3ペイン構成) |
 
 ### .env 設定(LLM関連)
 

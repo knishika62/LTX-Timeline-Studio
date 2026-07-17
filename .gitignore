@@ -2,6 +2,9 @@ node_modules/
 client/node_modules/
 client/dist/
 client/tsconfig.tsbuildinfo
+studio/client/node_modules/
+studio/client/dist/
+studio/client/tsconfig.tsbuildinfo
 generated/
 uploads/
 prompt/
@@ -16,6 +19,5 @@ __pycache__/
 CLAUDE.md
 MEMO.md
 AGENTS.md
-studio/
-server/
-client/
+/server/
+/client/
