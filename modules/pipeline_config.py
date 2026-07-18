@@ -19,10 +19,6 @@ LLM_BASE_URL: str = _get("LLM_BASE_URL", "http://localhost:1234/v1")
 LLM_MODEL: str = _get("LLM_MODEL", "Qwen3.6-35B-A3B-NVFP4")
 LLM_API_KEY: str = _get("LLM_API_KEY", "dummy")
 
-COMFYUI_LLM_BASE_URL: str = _get("COMFYUI_LLM_BASE_URL", LLM_BASE_URL)
-COMFYUI_LLM_MODEL: str = _get("COMFYUI_LLM_MODEL", LLM_MODEL)
-COMFYUI_LLM_API_KEY: str = _get("COMFYUI_LLM_API_KEY", "")
-
 COMFYUI_IMAGE_URL: str = _get("COMFYUI_IMAGE_URL", "http://localhost:8188")
 COMFYUI_VIDEO_URL: str = _get("COMFYUI_VIDEO_URL", "http://localhost:8188")
 

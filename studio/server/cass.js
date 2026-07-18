@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { CASS_DIR, CASS_OUTPUT_DIR, BGM_DIR } from "./config.js";
-import { condaPythonArgs, streamCommand, runBridge } from "./proc.js";
+import { CASS_DIR, CASS_OUTPUT_DIR, BGM_DIR, MAIN_PYTHON } from "./config.js";
+import { pythonArgs, streamCommand, runBridge } from "./proc.js";
 import { createJob } from "./jobs.js";
 
 /** CASS(音声分離+BGMミックス)。Gradio版 on_cass の移植:
@@ -27,7 +27,7 @@ export function startCass({ videoPath, bgmPath = null, volume = 0.6 }) {
     await run("ffmpeg", ["-y", "-loglevel", "error", "-i", videoPath, "-vn", "-ac", "1", "-ar", "48000", audioTmp]);
 
     job.appendLog("\n[2/3] separating stems (BandIt v2, for display)...\n");
-    const [cmd, args] = condaPythonArgs("CASS", "separate.py", ["--audio", audioTmp, "--out", stemsDir]);
+    const [cmd, args] = pythonArgs(MAIN_PYTHON, "separate.py", ["--audio", audioTmp, "--out", stemsDir]);
     await run(cmd, args, CASS_DIR);
     job.setState({
       voice: path.join(stemsDir, "speech.wav"),
@@ -35,10 +35,11 @@ export function startCass({ videoPath, bgmPath = null, volume = 0.6 }) {
       bgmOrig: path.join(stemsDir, "music.wav"),
     });
 
-    job.appendLog("\n[3/3] mixing + remuxing (process.sh)...\n");
-    const shArgs = [videoPath];
-    if (bgmPath) shArgs.push(bgmPath, String(volume));
-    await run(path.join(CASS_DIR, "process.sh"), shArgs, CASS_DIR);
+    job.appendLog("\n[3/3] mixing + remuxing (process.py)...\n");
+    const processArgs = [videoPath];
+    if (bgmPath) processArgs.push(bgmPath, String(volume));
+    const [pCmd, pArgs] = pythonArgs(MAIN_PYTHON, path.join(CASS_DIR, "process.py"), processArgs);
+    await run(pCmd, pArgs, CASS_DIR);
 
     const outPath = path.join(CASS_OUTPUT_DIR, `${videoName}_remixed.mp4`);
     if (!fs.existsSync(outPath)) throw new Error(`expected output not found: ${outPath}`);

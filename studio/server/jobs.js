@@ -1,5 +1,5 @@
-import { PREFIXES, SCRIPTS } from "./config.js";
-import { condaPythonModuleArgs, streamCommand } from "./proc.js";
+import { PREFIXES, SCRIPTS, MAIN_PYTHON } from "./config.js";
+import { pythonModuleArgs, streamCommand } from "./proc.js";
 import { findRunId, runSnapshot } from "./scan.js";
 
 // ============================================================
@@ -164,7 +164,7 @@ export function startGeneration(engine, { promptPath = "", orientation = "--h", 
   const prefix = PREFIXES[engine];
 
   const cliArgs = promptPath ? [orientation, "--f", promptPath, ...extraArgs] : extraArgs;
-  const [cmd, args] = condaPythonModuleArgs("x-post", script.replace(/\.py$/, ""), cliArgs);
+  const [cmd, args] = pythonModuleArgs(MAIN_PYTHON, script.replace(/\.py$/, ""), cliArgs);
 
   const job = new Job("generation");
   job.engine = engine;

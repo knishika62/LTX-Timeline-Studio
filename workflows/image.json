@@ -59,10 +59,10 @@
   },
   "69": {
     "inputs": {
-      "seed": 545780564049999,
+      "seed": 124908035394302,
       "steps": 8,
       "cfg": 1,
-      "sampler_name": "er_sde",
+      "sampler_name": "euler",
       "scheduler": "simple",
       "denoise": 1,
       "model": [
@@ -124,36 +124,6 @@
       "title": "Lora Loader Stack (rgthree)"
     }
   },
-  "95": {
-    "inputs": {
-      "seed": 651578184489468,
-      "steps": 4,
-      "cfg": 1,
-      "sampler_name": "er_sde",
-      "scheduler": "simple",
-      "denoise": 0.25,
-      "model": [
-        "76",
-        0
-      ],
-      "positive": [
-        "67",
-        0
-      ],
-      "negative": [
-        "71",
-        0
-      ],
-      "latent_image": [
-        "69",
-        0
-      ]
-    },
-    "class_type": "KSampler",
-    "_meta": {
-      "title": "KSampler"
-    }
-  },
   "96": {
     "inputs": {
       "upscale": -1,
@@ -163,7 +133,7 @@
       "temporal_size": 4096,
       "temporal_overlap": 64,
       "samples": [
-        "95",
+        "69",
         0
       ],
       "vae": [

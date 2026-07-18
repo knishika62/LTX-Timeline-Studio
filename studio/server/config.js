@@ -18,8 +18,13 @@ export const EDIT_TMP_DIR = path.join(GENERATED_DIR, "_edit_tmp");
 export const SCRIPTS = { t2v: "t2v_timeline_cliV6.py", i2v: "i2v_timeline_cliV6.py" };
 export const PREFIXES = { t2v: "t2v6", i2v: "i2v6" };
 
-// conda はシェル関数なので Node の spawn からは実バイナリを直接叩く
-export const CONDA = process.env.CONDA_EXE || "/opt/miniconda3/bin/conda";
+// リポジトリ直下の venv(python -m venv venv / uv venv venv、どちらも同じフォルダ構造)を
+// 直接叩く。v6本体・CASSの依存は衝突しないため単一venvで両方賄う(2026-07-18検証済み)。
+// conda/uv等のツールをNode側は一切意識しない。既定の場所以外にvenvを置きたい場合のみ
+// .envのPYTHON_BINで上書きする(パス変更はサーバー再起動が前提でよいためprocess.envを直読み)。
+const isWin = process.platform === "win32";
+export const MAIN_PYTHON = process.env.PYTHON_BIN ||
+  path.join(BASE_DIR, "venv", isWin ? "Scripts" : "bin", isWin ? "python.exe" : "python");
 
 // .env は process.env に読み込まず、使う瞬間に毎回パースする。
 // 子プロセス(生成CLI)にも .env 由来のキーを一切注入しない——子の load_dotenv() が
