@@ -1,7 +1,3 @@
-# BandIt v2 (Cinematic Audio Source Separation) 推論専用の依存関係。
-# 本家 bandit-v2 の requirements.txt はNetflix社内インフラ(pypi.netflix.net、
-# nflx-*/jasper/metatron/ray等)に強く依存しており社外から使えないため、
-# 推論(separate.py)に実際に必要なものだけをここに書く。
 torch==2.13.0
 torchaudio==2.11.0
 torchcodec==0.14.0
