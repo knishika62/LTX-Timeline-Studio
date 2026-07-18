@@ -138,9 +138,21 @@ async function runLLM(system, user, temperature = 0.7) {
       { role: "user", content: `/no_think\n${user}` },
     ],
     temperature,
-    max_tokens: 4096,
+    max_tokens: 8192,
+    // DeepSeek系thinkingモデルの思考を明示的に無効化(2026-07-18、modules/timeline_common.pyと
+    // 同じ対応)。ルールの多いsystem promptだとreasoning_tokensだけで容易に1万を超え、
+    // max_tokens引き上げだけでは実用速度が出ない事故が実機で発生した。/no_thinkは無視される
+    // モデルでもこちらは効く(実機確認済み)。非対応エンドポイント(ローカルQwen3/Ornith等)は
+    // 未知パラメータとして無視されるだけで実害なし(実機確認済み)。
+    // NB: Python SDKの extra_body={...} はPython固有のラッパーで、JS SDKでは効かない
+    // (実機確認済み——ラップしたらreasoning_tokensが消えなかった)。JS側はトップレベルの
+    // 追加フィールドがそのままリクエストボディに乗る。
+    thinking: { type: "disabled" },
   });
-  return (resp.choices[0]?.message?.content || "").trim();
+  const message = resp.choices[0]?.message;
+  const content = (message?.content || "").trim();
+  if (content) return content;
+  return (message?.reasoning_content || "").trim();
 }
 
 function fmtTs(sec) {

@@ -237,7 +237,13 @@ async def _auto_segment_narrative(text: str) -> str:
             {"role": "user", "content": f"/no_think\n{text.strip()}"},
         ],
         temperature=0.4,
-        max_tokens=4096,
+        max_tokens=8192,
+        # DeepSeek系thinkingモデルの思考を明示的に無効化(2026-07-18)。ルールの多いsystem
+        # promptだとreasoning_tokensだけで数千〜1万5千を超え、max_tokens引き上げだけでは
+        # 実用速度が出ない事故が実機で発生したための対応。/no_thinkは無視されるがこちらは効く
+        # (実機確認済み)。非対応エンドポイント(ローカルQwen3/Ornith等)は未知パラメータとして
+        # 無視されるだけで実害なし(実機確認済み)。以下同種のextra_bodyも同じ理由。
+        extra_body={"thinking": {"type": "disabled"}},
     )
     raw = (resp.choices[0].message.content or "").strip()
     if not raw:
@@ -1025,7 +1031,9 @@ async def _extract_character_line(global_desc: str) -> str:
             {"role": "user", "content": f"/no_think\n{global_desc}"},
         ],
         temperature=0.3,
-        max_tokens=256,
+        max_tokens=2048,
+        # thinking無効化(2026-07-18、詳細は_auto_segment_narrativeのコメント参照)。
+        extra_body={"thinking": {"type": "disabled"}},
     )
     line = (resp.choices[0].message.content or "").strip()
     if not line:
@@ -1332,6 +1340,10 @@ async def _chat_json(
     for attempt in range(1, _JSON_PARSE_MAX_ATTEMPTS + 1):
         resp = await client.chat.completions.create(
             model=model, messages=messages, temperature=temperature, max_tokens=max_tokens,
+            # thinking無効化(2026-07-18、詳細は_auto_segment_narrativeのコメント参照)。
+            # JSON構造化パスはルールの多いsystem promptが多く、thinkingが乗るとreasoning_tokens
+            # だけで容易に1万を超え実用速度が出なくなる事故が実機で発生していた。
+            extra_body={"thinking": {"type": "disabled"}},
         )
         raw = (resp.choices[0].message.content or "").strip()
         if not raw:
@@ -1412,7 +1424,9 @@ async def _plan_creative_intent_json(
         f"## Orientation\n{orient_note}\n\n"
         f"## Segments ({len(segments)} total)\n{seg_list}"
     )
-    return await _chat_json(client, cfg.LLM_MODEL, system_prompt, user_msg, len(segments), 0.8, 4096)
+    # max_tokensはthinkingモデル(DeepSeek等)対策で余裕を持たせている(2026-07-18、詳細は
+    # _auto_segment_narrativeのコメント参照)。
+    return await _chat_json(client, cfg.LLM_MODEL, system_prompt, user_msg, len(segments), 0.8, 8192)
 
 
 async def _plan_shot_directions_json(
@@ -1438,7 +1452,10 @@ async def _plan_shot_directions_json(
         f"## Orientation\n{orient_note}\n\n"
         f"## Segments ({len(segments)} total)\n{seg_list}"
     )
-    items = await _chat_json(client, cfg.LLM_MODEL, system_prompt, user_msg, len(segments), 0.8, 1024)
+    # max_tokens: DeepSeek系はshot directionの書きぶりが長くなることがあり(2026-07-18、
+    # 実機でのJSON尻切れを確認)、余白を厚めに取っている(headroomはタダ、詳細は
+    # _auto_segment_narrativeのコメント参照)。
+    items = await _chat_json(client, cfg.LLM_MODEL, system_prompt, user_msg, len(segments), 0.8, 8192)
     raw_dirs = [(d.get("direction") or "").strip() or "eye level, static handheld, medium" for d in items]
     return [_enforce_shot_rules(seg["action"], d) for seg, d in zip(segments, raw_dirs)]
 
@@ -1464,7 +1481,7 @@ async def _audit_shot_variety_json(
         f"## Orientation\n{orient_note}\n\n"
         f"## Shot list ({len(segments)} segments)\n{dir_list}"
     )
-    items = await _chat_json(client, cfg.LLM_MODEL, system_prompt, user_msg, len(segments), 0.4, 1024)
+    items = await _chat_json(client, cfg.LLM_MODEL, system_prompt, user_msg, len(segments), 0.4, 8192)
     result: list[str] = []
     for seg, orig, item in zip(segments, directions, items):
         d = (item.get("direction") or "").strip() or orig
@@ -1506,7 +1523,9 @@ async def _write_scene_description(
             {"role": "user",   "content": user_msg},
         ],
         temperature=0.7,
-        max_tokens=1024,
+        max_tokens=4096,
+        # thinking無効化(2026-07-18、詳細は_auto_segment_narrativeのコメント参照)。
+        extra_body={"thinking": {"type": "disabled"}},
     )
     content = (resp.choices[0].message.content or "").strip()
     if not content:

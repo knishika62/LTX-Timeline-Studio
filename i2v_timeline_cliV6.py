@@ -675,7 +675,10 @@ async def _extract_style_line(global_desc: str) -> str:
                 {"role": "user", "content": f"/no_think\n{global_desc}"},
             ],
             temperature=0.3,
-            max_tokens=128,
+            max_tokens=2048,
+            # thinking無効化(2026-07-18、詳細はmodules/timeline_common.py
+            # _auto_segment_narrativeのコメント参照)。
+            extra_body={"thinking": {"type": "disabled"}},
         )
     except Exception:
         return _DEFAULT_STYLE_TAIL
@@ -753,6 +756,9 @@ async def _format_keyframe_prompt(scene_desc: str, global_desc: str, duration: i
         ],
         temperature=0.7,
         max_tokens=4096,
+        # thinking無効化(2026-07-18、詳細はmodules/timeline_common.py
+        # _auto_segment_narrativeのコメント参照)。
+        extra_body={"thinking": {"type": "disabled"}},
     )
     content = (resp.choices[0].message.content or "").strip()
     if not content:
@@ -978,6 +984,9 @@ async def _format_motion_prompt(scene_desc: str, ambience: str, duration: int, o
         ],
         temperature=0.7,
         max_tokens=2048,
+        # thinking無効化(2026-07-18、詳細はmodules/timeline_common.py
+        # _auto_segment_narrativeのコメント参照)。
+        extra_body={"thinking": {"type": "disabled"}},
     )
     content = (resp.choices[0].message.content or "").strip()
     if not content:
@@ -1109,6 +1118,9 @@ async def _run_fixer(prompt: str, violated_rules: str, direction: str, action: s
             ],
             temperature=0.4,
             max_tokens=4096,
+            # thinking無効化(2026-07-18、詳細はmodules/timeline_common.py
+            # _auto_segment_narrativeのコメント参照)。
+            extra_body={"thinking": {"type": "disabled"}},
         )
     except Exception as e:
         print(f"[i2v-tl6]   Pass4 fix スキップ(LLMエラー): {e}")
@@ -1116,8 +1128,10 @@ async def _run_fixer(prompt: str, violated_rules: str, direction: str, action: s
     fixed = (resp.choices[0].message.content or "").strip()
     if not fixed:
         fixed = (getattr(resp.choices[0].message, "reasoning_content", None) or "").strip()
-    # 修正文の妥当性を軽く検証: 短すぎ・解説混入は破棄
-    if len(fixed) < min_len or re.match(r"^(C\d+|M\d+)\b", fixed):
+    # 修正文の妥当性を軽く検証: 短すぎ・解説混入・コードフェンス/JSON片の混入は破棄
+    # (2026-07-18、実機でOrnith-1.0-35Bが```json {...}```という壊れたJSON片を修正文の末尾に
+    # 付け足し、長さだけは足りていたため素通りして最終LTXプロンプトに混入する事故が発生)
+    if len(fixed) < min_len or re.match(r"^(C\d+|M\d+)\b", fixed) or "```" in fixed:
         return None
     return fixed
 

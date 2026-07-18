@@ -63,7 +63,13 @@ async def expand_krea2_prompt(prompt: str) -> str:
                 {"role": "user", "content": f"/no_think\n{raw}"},
             ],
             temperature=0.3,
-            max_tokens=4096,
+            max_tokens=8192,
+            # DeepSeek系thinkingモデルの思考を明示的に無効化(2026-07-18)。ルールの多いsystem
+            # promptだとreasoning_tokensだけで数千〜1万5千を超え、max_tokens引き上げだけでは
+            # 実用速度が出ない事故が実機で発生したための対応。/no_thinkは無視されるがこちらは効く
+            # (実機確認済み)。非対応エンドポイント(ローカルQwen3/Ornith等)は未知パラメータとして
+            # 無視されるだけで実害なし(実機確認済み)。
+            extra_body={"thinking": {"type": "disabled"}},
         )
         result = (resp.choices[0].message.content or "").strip()
         if not result:

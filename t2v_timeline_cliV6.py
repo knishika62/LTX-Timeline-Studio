@@ -703,6 +703,9 @@ async def _format_to_ltx_prompt(scene_desc: str, global_desc: str, ambience: str
         ],
         temperature=0.7,
         max_tokens=4096,
+        # thinking無効化(2026-07-18、詳細はmodules/timeline_common.py
+        # _auto_segment_narrativeのコメント参照)。
+        extra_body={"thinking": {"type": "disabled"}},
     )
     content = (resp.choices[0].message.content or "").strip()
     if not content:
@@ -785,6 +788,9 @@ async def _lint_ltx_prompt(ltx_prompt: str, direction: str, action: str, orienta
                 ],
                 temperature=0.4,
                 max_tokens=4096,
+                # thinking無効化(2026-07-18、詳細はmodules/timeline_common.py
+                # _auto_segment_narrativeのコメント参照)。
+                extra_body={"thinking": {"type": "disabled"}},
             )
         except Exception as e:
             print(f"[t2v-tl6]   Pass4 fix スキップ(LLMエラー、試行{attempt}): {e}")
@@ -792,11 +798,14 @@ async def _lint_ltx_prompt(ltx_prompt: str, direction: str, action: str, orienta
         fixed = (resp2.choices[0].message.content or "").strip()
         if not fixed:
             fixed = (getattr(resp2.choices[0].message, "reasoning_content", None) or "").strip()
-        # 修正文の妥当性を軽く検証: 短すぎ・解説混入は破棄(このattemptだけ捨て、currentは維持)。
-        # 以前はここでbreakして残り試行を丸ごと放棄していたため、1回運が悪いだけで
-        # `_LINT_MAX_ATTEMPTS`回試す前提が崩れていた(2026-07-12修正、continueで次を試す)
-        if len(fixed) < 200 or re.match(r"^C\d+\b", fixed):
-            print(f"[t2v-tl6]   Pass4 lint 修正結果を破棄(試行{attempt}、短すぎ/解説混入)")
+        # 修正文の妥当性を軽く検証: 短すぎ・解説混入・コードフェンス/JSON片の混入は破棄
+        # (このattemptだけ捨て、currentは維持)。以前はここでbreakして残り試行を丸ごと放棄して
+        # いたため、1回運が悪いだけで`_LINT_MAX_ATTEMPTS`回試す前提が崩れていた
+        # (2026-07-12修正、continueで次を試す)。コードフェンス検出は2026-07-18追加
+        # (i2v側でOrnith-1.0-35Bが```json {...}```を末尾に付け足す事故が実機で発生したのを受け、
+        # 同型の検証ロジックを持つこちらにも同じチェックを追加)
+        if len(fixed) < 200 or re.match(r"^C\d+\b", fixed) or "```" in fixed:
+            print(f"[t2v-tl6]   Pass4 lint 修正結果を破棄(試行{attempt}、短すぎ/解説混入/コードフェンス混入)")
             continue
         remaining = _detect_violations(fixed, direction, orientation, reserved_props, action, state)
         current = fixed
