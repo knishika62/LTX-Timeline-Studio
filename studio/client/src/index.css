@@ -146,6 +146,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .preview-tabs button.active { background: var(--bg-card); color: var(--accent); border-color: var(--border); }
 
 .preview-area {
+  position: relative;
   flex: 1; background: #050507; display: flex; align-items: center; justify-content: center;
   color: var(--text-dim); font-size: 13px; min-height: 0;
   border-bottom: 1px solid var(--border);
@@ -179,8 +180,6 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .subtabs button.active { color: var(--text); border-bottom-color: var(--accent); }
 
-.timeline-hint { flex-shrink: 0; padding: 4px 10px 0; font-size: 11px; color: var(--text-dim); background: var(--bg-panel); }
-
 .timeline-strip {
   flex-shrink: 0; height: 132px; background: var(--bg-panel);
   display: flex; align-items: stretch; gap: 8px; padding: 10px; overflow-x: auto;
@@ -196,7 +195,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .clip.removed .clip-label { text-decoration: line-through; }
 .clip.drag-over { border-color: var(--warn); box-shadow: 0 0 0 1px var(--warn); }
 .clip-thumb {
-  flex: 1; background: #08080a; display: flex; align-items: center; justify-content: center;
+  flex: 1; min-height: 0; min-width: 0; background: #08080a; display: flex; align-items: center; justify-content: center;
   color: var(--text-dim); position: relative;
 }
 .clip-kf-thumb {

@@ -190,6 +190,31 @@ function RunThumb({ path, mt }: { path: string | null; mt: number }) {
   return <img src={media(path, mt)} alt="" onError={() => setFailed(true)} />;
 }
 
+/** セグメントclipのサムネイル(横長固定の箱、約1.9:1)。縦動画をobject-fit:coverだけで
+ * 詰めると中央30%程度しか見えず極端にズームされる(run一覧の正方形サムネイルは中央56%
+ * 程度残るため見え方が大きく異なる、2026-07-19ユーザー指摘)。読み込んだ画像/動画の実寸から
+ * 縦長と判定した場合のみobject-fit:containへ切り替え、トリミング無しでレターボックス表示する。
+ * 横長は箱の比率(≒16:9寄り)とほぼ一致するためcoverのまま(containにしても実質差が出ない)。 */
+function ClipThumbMedia({ kind, src }: { kind: "image" | "video"; src: string }) {
+  const [portrait, setPortrait] = useState(false);
+  const fit: React.CSSProperties["objectFit"] = portrait ? "contain" : "cover";
+  const style: React.CSSProperties = { width: "100%", height: "100%", objectFit: fit };
+  if (kind === "image") {
+    return (
+      <img
+        src={src} alt="" style={style}
+        onLoad={(e) => setPortrait(e.currentTarget.naturalHeight > e.currentTarget.naturalWidth)}
+      />
+    );
+  }
+  return (
+    <video
+      src={src} muted style={style}
+      onLoadedMetadata={(e) => setPortrait(e.currentTarget.videoHeight > e.currentTarget.videoWidth)}
+    />
+  );
+}
+
 /** modules/timeline_common.py の _parse_prompt は日本語でraiseする(実harnessとの共有ロジックの
  * ため直接編集はしない)。2026-07-17ユーザー報告の該当メッセージのみ英訳する。未知の文言は
  * そのまま出す(黙って握りつぶさない)。 */
@@ -492,7 +517,12 @@ export default function App() {
     if (!activeJob) return;
     if (selection.kind === "run" && selection.runId === activeJob.runId) {
       const segs = segmentsFromJobState(jobHook.state);
-      setEditSegs(segs);
+      // jobId切り替え直後、SSEのreplayが届くまでの一瞬state.expectedが空になり、segsも空になる
+      // (api.ts useJobが新jobId確定時にstateを{}へリセットするため、2026-07-17の別バグ対策で
+      // 意図的な挙動)。Retry中の同一runでこれをそのままeditSegsへ反映すると、.timeline-strip
+      // の中身が一瞬「(no segments)」に切り替わり、横スクロール位置がブラウザ側でリセットされる
+      // 事故が起きていた(2026-07-19ユーザー報告)。既存表示(非空)がある間は空で上書きしない。
+      setEditSegs((prev) => (segs.length || !prev.length ? segs : prev));
       setDetail((d) => (d ? { ...d, segments: segs.filter((s) => s.path).map((s) => ({ num: s.num, label: s.label, path: s.path!, mt: s.mt ?? 0, variant: null })) } : d));
     }
     if (jobHook.status !== "running" && jobHook.status !== "idle") {
@@ -868,6 +898,15 @@ export default function App() {
             </div>
           )}
           <div className="preview-area">
+            {selection.kind === "run" && activeJob?.runId === selection.runId && (
+              <button
+                className="danger icon" title="Stop generation"
+                style={{ position: "absolute", bottom: 6, right: 6, zIndex: 1 }}
+                onClick={stopGeneration}
+              >
+                <Icon name="stop" size={12} /> Stop
+              </button>
+            )}
             {selection.kind === "new" && (
               <div className="preview-placeholder">
                 <Icon name="film" size={32} />
@@ -965,9 +1004,6 @@ export default function App() {
                     </div>
                   )}
                 </div>
-                {!finalPreviewPath && (editSegs.some((s) => s.removed || s.trimStart > 0 || s.trimEnd > 0)) && (
-                  <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Showing the last committed final — pending edits below aren't reflected yet, click Preview</div>
-                )}
               </div>
             )}
             {selection.kind === "run" && selection.view === "cass" && displayCassPath && (
@@ -1001,16 +1037,6 @@ export default function App() {
               </div>
             )}
           </div>
-          {selection.kind === "run" && (
-            <div className="timeline-hint" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span>Cmd/Ctrl+click: multi-select · Shift+click: range select · drag: reorder</span>
-              {activeJob?.runId === selection.runId && (
-                <button className="danger icon" onClick={stopGeneration} title="Stop generation">
-                  <Icon name="stop" size={12} /> Stop
-                </button>
-              )}
-            </div>
-          )}
           <div className="timeline-strip">
             {selection.kind === "run" ? (
               editSegs.length ? editSegs.map((seg, i) => (
@@ -1034,12 +1060,12 @@ export default function App() {
                     <div className={`clip-status-bar ${seg.status}`} />
                     {selection.engine === "i2v" ? (
                       seg.keyframePath ? (
-                        <img src={media(seg.keyframePath, seg.mt)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        <ClipThumbMedia kind="image" src={media(seg.keyframePath, seg.mt)} />
                       ) : (
                         <span style={{ color: "var(--text-dim)", fontSize: 10 }}>awaiting keyframe</span>
                       )
                     ) : seg.path ? (
-                      <video src={media(seg.path, seg.mt)} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <ClipThumbMedia kind="video" src={media(seg.path, seg.mt)} />
                     ) : (
                       <Icon name="film" size={20} />
                     )}

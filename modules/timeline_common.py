@@ -192,7 +192,12 @@ _AUTO_SEGMENT_SYSTEM = """\
 You convert a single flowing narrative-style video prompt (Seedance-style, no timeline) \
 into: (1) one GLOBAL description paragraph covering the recurring character's appearance, \
 the location/setting, and the visual/camera style (gather these from wherever they appear \
-in the narrative, including trailing style clauses) — written as flowing prose, no timestamps; \
+in the narrative, including trailing style clauses) — written as flowing prose, no timestamps. \
+For every garment mentioned, pin down its silhouette explicitly even if the source narrative \
+does not: sleeve length for tops (sleeveless/short-sleeve/long-sleeve), hem length for skirts/ \
+dresses (mini/knee-length/midi/floor-length). A bare garment name like "crop top" or "skirt" is \
+NOT specific enough — each shot is generated independently later, so an unspecified silhouette \
+renders inconsistently from shot to shot; \
 (2) an ordered list of shot beats that together tell the same story, each as one line \
 "N. (Xs) action description", where X is a whole-second duration of **3 seconds or more \
 — never less than 3**. Group fine-grained micro-actions together into a single 3-5s beat \
