@@ -1,14 +1,14 @@
 """ACE-Step-1.5 API(localhost:8001)でインストゥルメンタルBGMを生成するCLI。
 
-CASS/process.sh(音声分離+BGMミックス)へ渡すBGM素材を、手動Suno生成の代わりに
+CASS/process.py(音声分離+BGMミックス)へ渡すBGM素材を、手動Suno生成の代わりに
 自動生成するための独立ツール。パイプライン本体(pipeline_server.py)・v6_harness.py
 には未統合(2026-07-13時点、まず単体スクリプトとして動作確認する方針)。
 
 常にボーカル無し(lyrics="[Instrumental]"固定)。歌詞付き曲の生成はサポートしない。
 
-使い方:
-  conda run -n x-post python bgm_generate_cli.py --prompt "warm lo-fi piano and acoustic guitar, calm cozy mood" --duration 120
-  conda run -n x-post python bgm_generate_cli.py --prompt "..." --duration 60 --takes 1
+使い方(リポジトリ直下のvenvを有効化した状態で実行):
+  python bgm_generate_cli.py --prompt "warm lo-fi piano and acoustic guitar, calm cozy mood" --duration 120
+  python bgm_generate_cli.py --prompt "..." --duration 60 --takes 1
 """
 
 from __future__ import annotations

@@ -1,12 +1,12 @@
 """Node.jsハーネス用のPythonシム。パース・連結・アップスケールはPython実装が正典なので
-JSに移植せず、既存モジュール(シンボリックリンク経由)をそのまま呼んでJSONで返す。
+JSに移植せず、既存モジュール(`modules/`)をそのまま呼んでJSONで返す。
 
-使い方(cwd=LTX-timeline、conda env x-post):
-  conda run -n x-post python bridge.py parse_prompt <file.txt|->   # "-" でstdinから読む
-  conda run -n x-post python bridge.py parse_prompts_txt <t2v|i2v> <prompts.txt>
-  conda run -n x-post python bridge.py concat            # stdinにJSON {"paths": [...], "out": "..."}
-  conda run -n x-post python bridge.py upscale <video>   # {stem}_FHD{suffix} を同じ場所に保存
-  conda run -n x-post python bridge.py bgm               # stdinにJSON {"prompt": "...", "duration": 60, "takes": 2, "out_dir": "..."}
+使い方(cwd=LTX-timeline、リポジトリ直下のvenvを有効化した状態で実行):
+  python bridge.py parse_prompt <file.txt|->   # "-" でstdinから読む
+  python bridge.py parse_prompts_txt <t2v|i2v> <prompts.txt>
+  python bridge.py concat            # stdinにJSON {"paths": [...], "out": "..."}
+  python bridge.py upscale <video>   # {stem}_FHD{suffix} を同じ場所に保存
+  python bridge.py bgm               # stdinにJSON {"prompt": "...", "duration": 60, "takes": 2, "out_dir": "..."}
 
 出力は常にstdoutへJSON1個。失敗時は {"ok": false, "error": "..."} + exit 1。
 """

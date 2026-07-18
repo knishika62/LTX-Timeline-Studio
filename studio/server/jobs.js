@@ -71,9 +71,12 @@ class Job {
     const proc = this.signal.proc;
     if (this.status === "running" && proc && proc.exitCode === null) {
       this.stopRequested = true;
-      // 実際にGPU処理を行う python は conda run の子プロセスなので、conda run 自身の pid だけ
-      // killしても止まらないことがある(conda runがSIGTERMを子へ転送しない)。detachedで
-      // 作ったプロセスグループごと殺す(pid同様に負のpidを渡すとグループ全体に届く)。
+      // python(venvバイナリを直接spawn)がさらにffmpeg等の子プロセスを起動することがあるため、
+      // proc.pidだけkillしてもその子孫が生き残ることがある。detachedで作ったプロセスグループ
+      // ごと殺す(pid同様に負のpidを渡すとグループ全体に届く)。
+      // (2026-07-18以前はconda run経由で起動しており、conda run自身がSIGTERMを子プロセスへ
+      // 転送しないという別の理由でも同じ対策が必要だった。venv直呼びに変えた現在もこの対策自体は
+      // 引き続き有効なため残している)
       try {
         process.kill(-proc.pid, "SIGTERM");
       } catch {

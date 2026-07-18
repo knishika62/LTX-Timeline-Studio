@@ -19,9 +19,10 @@ export function pythonModuleArgs(pythonBin, module, args = []) {
 }
 
 /** コマンドを実行し、stdout+stderr を行コールバックへ流す。resolve は exit code。
- * detached: true でプロセスグループを新設する(Stop時に conda run だけでなく、その配下で
- * 実際にGPU処理を行う python 子プロセスまで確実に止めるため——conda run はSIGTERMを
- * 子へ転送しないことがあり、pid一つだけkillしても実処理が動き続ける事故があった)。 */
+ * detached: true でプロセスグループを新設する(Stop時に、spawnしたプロセスがさらに起動する
+ * 子プロセス(ffmpeg等)まで確実に止めるため。2026-07-18以前はconda run経由で起動しており、
+ * conda run自身がSIGTERMを子へ転送せずpid一つだけkillしても実処理が動き続ける事故があった。
+ * venv直呼びに変えた現在も、子孫プロセスを確実に道連れにするため対策自体は残している)。 */
 export function streamCommand(cmd, args, { cwd = BASE_DIR, onLine, signal, detached = false } = {}) {
   return new Promise((resolve, reject) => {
     const proc = spawn(cmd, args, { cwd, env: process.env, detached });
@@ -68,7 +69,7 @@ export function runCommand(cmd, args, { cwd = BASE_DIR, stdin } = {}) {
 }
 
 /** bridge.py のサブコマンドを呼び、JSONを返す。失敗時はPython側の error メッセージで throw
- * (condaラッパーの定型エラー文ではなく、stdout のJSONから本当の原因を取り出す)。 */
+ * (プロセスの標準的なエラー文ではなく、stdout のJSONから本当の原因を取り出す)。 */
 export async function runBridge(args, { stdin } = {}) {
   const [cmd, fullArgs] = pythonArgs(MAIN_PYTHON, "bridge.py", args);
   let out;
