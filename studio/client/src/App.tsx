@@ -528,7 +528,10 @@ export default function App() {
   const latestCass = detail?.cass.videos[0] ?? null;
   const displayCassPath = cassPreviewPath ?? latestCass?.path ?? null;
   const displayCassMt = cassPreviewPath ? undefined : latestCass?.mt;
-  const latestUpscale = detail?.finals.find((f) => f.isFHD) ?? null;
+  // FHDはfinal直接upscale(_final_FHD.mp4→detail.finals)とCASS後upscale(_remixed_FHD.mp4→
+  // detail.cass.videos)の両方があり得る(13節)。finalOptions()が両方合成しisFHDも判定済みのため、
+  // detail.finalsだけを見ていた旧実装ではCASS後upscaleを見落としUpscaleタブが出ないバグがあった。
+  const latestUpscale = finalOptions(detail).find((f) => f.isFHD) ?? null;
   const displayUpscalePath = upscalePreviewPath ?? latestUpscale?.path ?? null;
   const displayUpscaleMt = upscalePreviewPath ? undefined : latestUpscale?.mt;
 
@@ -671,6 +674,13 @@ export default function App() {
       setSelection({ kind: "run", engine: activeJob.engine, runId, segmentNums: [1], view: "segment" });
       setDetail(null);
       setEditSegs([]);
+      // cassPreviewPath/upscalePreviewPathは通常のrun選択effect(459行目)でリセットされるが、
+      // このeffectはselectionとactiveJob.runIdを同時にセットするためそちらのガードで早期returnし
+      // 実行されない。前runのCASS/Upscale結果が残ったまま新runのタブに出てしまうバグの原因だった
+      // (2026-07-18ユーザー報告)。ここで明示的にクリアする。
+      setFinalPreviewPath(null);
+      setCassPreviewPath(null);
+      setUpscalePreviewPath(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobHook.state.runId, activeJob]);
