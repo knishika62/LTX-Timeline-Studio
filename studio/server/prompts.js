@@ -30,6 +30,7 @@ export function savePromptFile(name, text) {
   let n = name.trim();
   if (!n.endsWith(".txt")) n += ".txt";
   const p = safePromptPath(n);
+  fs.mkdirSync(PROMPT_DIR, { recursive: true });
   fs.writeFileSync(p, text, "utf-8");
   return { name: n, path: p };
 }

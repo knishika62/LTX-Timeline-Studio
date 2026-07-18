@@ -50,8 +50,15 @@ Node.js(Express+SSE)バックエンド + Vite/React/TSフロントエンド。
 
    別の場所に仮想環境を置きたい場合は、`.env`の`PYTHON_BIN`にPythonバイナリのフルパス(例:
    `/path/to/venv/bin/python`、Windowsは`C:\path\to\venv\Scripts\python.exe`)を指定すれば上書きできる。
-2. **`.env`**: `.env.example` をこのリポジトリ直下に `.env` としてコピーし、値を埋める。まずは下記の
-   LLM(OpenAI互換API、プロンプト展開Pass0〜4用)だけ設定すればLLMパスの動作確認ができる。ComfyUI/CASS
+2. **`.env`**: `.env.example` をこのリポジトリ直下に `.env` としてコピーし、値を埋める。まずは
+   `LLM_BASE_URL`/`LLM_MODEL`/`LLM_API_KEY`(OpenAI互換API、プロンプト展開Pass0〜4用)だけ設定すれば
+   LLMパスの動作確認ができる。例えばLM Studioでモデルを起動している場合:
+   ```
+   LLM_BASE_URL=http://localhost:1234/v1
+   LLM_MODEL=qwen/qwen3.6-35b-a3b
+   LLM_API_KEY=dummy
+   ```
+   （vLLM/SGLang/クラウドAPI等OpenAI互換であれば`LLM_BASE_URL`を差し替えるだけでよい）。ComfyUI/CASS
    関連キーはそれぞれの設定セクションで追って埋める
 3. **ffmpeg/ffprobe**: セグメント連結・フェード処理に必須。PATHが通っていること
 4. 動作確認(ComfyUI無しでLLMパスだけ確認できる、`venv`を有効化した状態で実行):

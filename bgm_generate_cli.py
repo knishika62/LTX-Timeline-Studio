@@ -109,6 +109,7 @@ async def _download_take(client: httpx.AsyncClient, base_url: str, file_ref: str
 async def generate_bgm(prompt: str, duration_s: float, takes: int | None, out_dir: Path | None = None) -> list[Path]:
     base_url = cfg.ACESTEP_URL.rstrip("/")
     dest_dir = out_dir if out_dir is not None else cfg.GENERATED_DIR
+    dest_dir.mkdir(parents=True, exist_ok=True)
     async with httpx.AsyncClient(timeout=30.0) as client:
         await _ensure_model_loaded(client, base_url, cfg.ACESTEP_MODEL)
         task_id = await _submit_job(client, base_url, prompt, duration_s, takes)
