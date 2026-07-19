@@ -3,7 +3,7 @@
     "inputs": {
       "filename_prefix": "krea2",
       "images": [
-        "99",
+        "100",
         0
       ]
     },
@@ -14,7 +14,7 @@
   },
   "62": {
     "inputs": {
-      "clip_name": "Krea2-Engineer-V1-bf16.safetensors",
+      "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
       "type": "krea2",
       "device": "default"
     },
@@ -25,7 +25,7 @@
   },
   "66": {
     "inputs": {
-      "unet_name": "Krea-R-Turbo.safetensors",
+      "unet_name": "krea2_turbo_int8_convrot.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
@@ -59,7 +59,7 @@
   },
   "69": {
     "inputs": {
-      "seed": 124908035394302,
+      "seed": 952178206014756,
       "steps": 8,
       "cfg": 1,
       "sampler_name": "euler",
@@ -74,7 +74,7 @@
         0
       ],
       "negative": [
-        "71",
+        "101",
         0
       ],
       "latent_image": [
@@ -85,19 +85,6 @@
     "class_type": "KSampler",
     "_meta": {
       "title": "KSampler"
-    }
-  },
-  "71": {
-    "inputs": {
-      "text": "人体畸形,ugly fingers, \n\n\n\n",
-      "clip": [
-        "76",
-        1
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Negative Prompt)"
     }
   },
   "76": {
@@ -124,14 +111,17 @@
       "title": "Lora Loader Stack (rgthree)"
     }
   },
-  "96": {
+  "97": {
     "inputs": {
-      "upscale": -1,
-      "tile": false,
-      "tile_size": 512,
-      "overlap": 64,
-      "temporal_size": 4096,
-      "temporal_overlap": 64,
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "100": {
+    "inputs": {
       "samples": [
         "69",
         0
@@ -141,33 +131,21 @@
         0
       ]
     },
-    "class_type": "VAEUtils_VAEDecodeTiled",
+    "class_type": "VAEDecode",
     "_meta": {
-      "title": "VAE Decode (VAE Utils)"
+      "title": "VAE Decode"
     }
   },
-  "97": {
+  "101": {
     "inputs": {
-      "vae_name": "Wan2.1_VAE_upscale2x_imageonly_real_v1.safetensors"
-    },
-    "class_type": "VAELoader",
-    "_meta": {
-      "title": "Load VAE"
-    }
-  },
-  "99": {
-    "inputs": {
-      "resize_type": "scale by multiplier",
-      "resize_type.multiplier": 0.5,
-      "scale_method": "lanczos",
-      "input": [
-        "96",
+      "conditioning": [
+        "67",
         0
       ]
     },
-    "class_type": "ResizeImageMaskNode",
+    "class_type": "ConditioningZeroOut",
     "_meta": {
-      "title": "Resize Image/Mask"
+      "title": "ConditioningZeroOut"
     }
   }
 }

@@ -173,13 +173,19 @@ ComfyUI Manager の「Install Missing Custom Nodes」でワークフローを開
 - Latent Upscale Model: [`ltx-2.3-spatial-upscaler-x2-1.1.safetensors`](https://huggingface.co/Lightricks/LTX-2.3/blob/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors)
 
 **`image.json`(i2vキーフレーム生成)**
-- UNET: [`Krea-R-Turbo.safetensors`](https://huggingface.co/realrebelai/Krea-R-Turbo)
-- CLIP: [`Krea2-Engineer-V1-bf16.safetensors`](https://huggingface.co/BennyDaBall/Krea-2-Engineer-V1/blob/main/Krea2-Engineer-V1-bf16.safetensors)
-- VAE: [`Wan2.1_VAE_upscale2x_imageonly_real_v1.safetensors`](https://huggingface.co/spacepxl/Wan2.1-VAE-upscale2x/blob/main/Wan2.1_VAE_upscale2x_imageonly_real_v1.safetensors)
+- UNET: [`krea2_turbo_int8_convrot.safetensors`](https://huggingface.co/Comfy-Org/Krea-2/blob/main/diffusion_models/krea2_turbo_int8_convrot.safetensors)
+- CLIP: [`qwen3vl_4b_fp8_scaled.safetensors`](https://huggingface.co/Comfy-Org/Krea-2/blob/main/text_encoders/qwen3vl_4b_fp8_scaled.safetensors)
+- VAE: [`qwen_image_vae.safetensors`](https://huggingface.co/Comfy-Org/Krea-2/blob/main/vae/qwen_image_vae.safetensors)
 
 **`rtx_video_upscale.json`(アップスケール)**
 - 追加の重みファイル不要。NVIDIAドライバ内蔵のRTX Video Super Resolution機能を使用(対応GPU必須)
-- カスタムノード [Nvidia_RTX_Nodes_ComfyUI](https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI) が必要(ComfyUI Managerの「Install Missing Custom Nodes」で導入可)
+
+### カスタムノード
+
+いずれもComfyUI Managerの「Install Missing Custom Nodes」で導入可。
+
+- `video.json`・`image.json`共通: [rgthree-comfy](https://github.com/rgthree/rgthree-comfy)
+- `rtx_video_upscale.json`: [Nvidia_RTX_Nodes_ComfyUI](https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI)
 
 ### .env 設定(ワークフロー関連)
 
