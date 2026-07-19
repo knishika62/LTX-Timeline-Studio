@@ -37,6 +37,7 @@ export type LibraryRunDetail = {
   segments: LibrarySegVideo[];
   finals: LibraryFinal[];
   cass: { videos: LibraryCassVideo[]; stems: LibraryCassStem[] };
+  expected: ExpectedSeg[];
 };
 export type LibraryPeriod = "today" | "7d" | "30d" | "all";
 export type LibraryRunsResponse = { runs: LibraryRunInfo[]; truncated: boolean; total: number };

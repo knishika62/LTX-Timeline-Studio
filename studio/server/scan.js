@@ -352,6 +352,7 @@ export function libraryRunDetail(engine, runId) {
     segments: scanAllSegmentVideos(prefix, runId),
     finals: scanAllFinals(prefix, runId),
     cass: scanCassOutputs(prefix, runId),
+    expected: expectedSegments(prefix, runId),
   };
 }
 

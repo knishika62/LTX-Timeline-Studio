@@ -242,21 +242,31 @@ function dateGroupKey(ms: number): string {
  * detail.segments/keyframesはLibraryの設計上、_old1/_old2等のバックアップも同じnumで
  * 複数件含む(閲覧用に隠さず全部返す仕様)。ここではeditの対象になる「現在有効な1本」
  * (variant === null)だけに絞り込む — 絞らないと同じnumが重複しstudioのnum単位の選択・
- * Edit配列がすべて壊れる(2026-07-17実機調査で発覚)。 */
+ * Edit配列がすべて壊れる(2026-07-17実機調査で発覚)。
+ * detail.expected(prompts.txtのセグメント見出しから得た「本来何番まであるはずか」)を
+ * 土台にし、まだファイルが無い番号は path: null の「queued」プレースホルダで埋める
+ * (2026-07-19ユーザー報告: Retry all途中でstopすると未生成segmentの情報が消えてretry
+ * できなくなる対策。segmentsFromJobStateと同型のロジック)。 */
 function segmentsFromDetail(detail: LibraryRunDetail): UiSegment[] {
   const currentSegs = detail.segments.filter((s) => s.variant === null);
   const currentKfs = detail.keyframes.filter((k) => k.variant === null);
-  return currentSegs.map((s) => ({
-    num: s.num,
-    label: s.label,
-    path: s.path,
-    mt: s.mt,
-    status: "done" as UiStatus,
-    keyframePath: currentKfs.find((k) => k.seg === s.num)?.path ?? null,
-    removed: false,
-    trimStart: 0,
-    trimEnd: 0,
-  }));
+  const expected = detail.expected ?? [];
+  const nums = [...new Set([...expected.map((e) => e.num), ...currentSegs.map((s) => s.num)])].sort((a, b) => a - b);
+  return nums.map((num) => {
+    const s = currentSegs.find((s) => s.num === num);
+    const kf = currentKfs.find((k) => k.seg === num);
+    return {
+      num,
+      label: s?.label ?? expected.find((e) => e.num === num)?.label ?? `seg${num}`,
+      path: s?.path ?? null,
+      mt: s?.mt,
+      status: (s ? "done" : kf ? "generating" : "queued") as UiStatus,
+      keyframePath: kf?.path ?? null,
+      removed: false,
+      trimStart: 0,
+      trimEnd: 0,
+    };
+  });
 }
 
 type EditStage = { order?: number[]; removed?: number[]; trims?: Record<string, { trimStart: number; trimEnd: number }> } | null;
