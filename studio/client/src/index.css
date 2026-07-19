@@ -265,6 +265,9 @@ button:disabled { opacity: 0.4; cursor: default; }
   display: flex; align-items: center; justify-content: center;
   padding: 3vh 3vw;
 }
+.lightbox img, .lightbox video {
+  max-width: 94vw; max-height: 94vh; width: auto; height: auto; object-fit: contain;
+}
 .lightbox .lb-placeholder-img {
   width: 60vw; height: 70vh; max-width: 900px; border-radius: 6px;
   background: repeating-linear-gradient(135deg, #1a1a22, #1a1a22 10px, #201f28 10px, #201f28 20px);
