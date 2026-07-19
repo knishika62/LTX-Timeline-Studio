@@ -61,6 +61,13 @@ def _fmt_duration(seconds: float) -> str:
 # パーサー / ファイル出力ユーティリティ
 # ============================================================
 
+class NoTimelineFoundError(ValueError):
+    """テキストに'Timeline:'ヘッダーもタイムスタンプも一切無い場合だけ投げる専用例外。
+    呼び出し側(t2v/i2v CLI)はこの型だけを見てPass -1(自動タイムライン分割)へフォール
+    バックするかどうかを判定する——エラーメッセージの文字列一致で判定すると、メッセージの
+    文言を変えるたびに(2026-07-19に実際発生)判定が壊れるため、型で区別する。"""
+
+
 def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
     """プロンプトを全体・Timelineセグメント・Ambienceに分解する。
 
@@ -95,7 +102,7 @@ def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
     else:
         ts_start = re.search(r"(?m)^\*{0,2}(\[?\d{1,2}:\d{2}[–\-]\d{1,2}:\d{2}|\d+(?:\.\d+)?[–\-]\d+(?:\.\d+)?s:|\[\d+(?:\.\d+)?s?\s*[–\-]\s*\d+(?:\.\d+)?s?\])", text)
         if not ts_start:
-            raise ValueError("'Timeline:' ヘッダーもタイムスタンプも見つかりません")
+            raise NoTimelineFoundError("No 'Timeline:' header or timestamp found")
         global_desc    = text[:ts_start.start()].strip()
         after_timeline = text[ts_start.start():].strip()
 
@@ -182,7 +189,7 @@ def _parse_prompt(text: str) -> tuple[str, list[dict], str]:
         i += 1
 
     if not segments:
-        raise ValueError("Timeline セグメントが見つかりません(対応形式: '0–2s: desc' / '00:00–00:02 desc' / '00:00–00:02 → desc' / '00:00–00:02\\ndesc')")
+        raise ValueError("No timeline segments found (supported formats: '0–2s: desc' / '00:00–00:02 desc' / '00:00–00:02 → desc' / '00:00–00:02\\ndesc')")
 
     return global_desc, segments, ambience
 
@@ -228,6 +235,32 @@ SEGMENTS:
 """
 
 
+async def _parse_prompt_or_auto_segment(text: str, log_prefix: str) -> tuple[str, list[dict], str, bool] | None:
+    """`_parse_prompt()`を試み、'Timeline:'ヘッダー/タイムスタンプが一切無い場合
+    (`NoTimelineFoundError`)だけPass -1(`_auto_segment_narrative`)で自動分割してから
+    再パースする。それ以外のパースエラー、および自動分割後もパースできない場合はNoneを返す
+    (呼び出し側はエラーメッセージが既に出力済みとして、Noneならそのまま終了すればよい)。
+    t2v/i2v CLI両方の`main()`冒頭にほぼ同一のtry/exceptが重複していたのを共通化した
+    (2026-07-19、エラー種別を文字列一致で判定していた頃の重複コピーが片方だけ直って
+    片方が壊れる事故を起こしたため)。"""
+    try:
+        global_desc, segments, ambience = _parse_prompt(text)
+        return global_desc, segments, ambience, False
+    except NoTimelineFoundError:
+        print(f"{log_prefix} タイムライン形式が見つかりません — Pass -1で自動分割します(目安15秒、3秒ビート基本)...")
+        text = await _auto_segment_narrative(text)
+        print(f"{log_prefix} 自動分割結果:\n{text}\n")
+        try:
+            global_desc, segments, ambience = _parse_prompt(text)
+        except ValueError as e2:
+            print(f"{log_prefix} 自動分割後もパースエラー: {e2}")
+            return None
+        return global_desc, segments, ambience, True
+    except ValueError as e:
+        print(f"{log_prefix} パースエラー: {e}")
+        return None
+
+
 async def _auto_segment_narrative(text: str) -> str:
     """タイムライン無しの1本の物語文を、既存の`_parse_prompt()`がそのまま読める
     Timeline形式(Format B)のテキストへ変換する(2026-07-08新設、Pass -1)。
@@ -256,7 +289,7 @@ async def _auto_segment_narrative(text: str) -> str:
 
     m = re.search(r"GLOBAL:\s*(.*?)\s*SEGMENTS:\s*(.*)", raw, re.DOTALL | re.IGNORECASE)
     if not m:
-        raise ValueError(f"Pass -1 の出力形式が不正です(GLOBAL:/SEGMENTS: が見つかりません):\n{raw}")
+        raise ValueError(f"Pass -1 output format is invalid (GLOBAL:/SEGMENTS: not found):\n{raw}")
     global_text = m.group(1).strip()
     body = m.group(2)
 
@@ -266,7 +299,7 @@ async def _auto_segment_narrative(text: str) -> str:
         if lm:
             beats.append((int(lm.group(1)), lm.group(2).strip()))
     if not beats:
-        raise ValueError(f"Pass -1 でセグメントを1件も抽出できませんでした:\n{raw}")
+        raise ValueError(f"Pass -1 extracted zero segments:\n{raw}")
 
     # 各ビートは3秒以上(ユーザー方針: 細かい動作単位に割らず3秒以上でまとめる)。LLMが指示を
     # 無視して短いビートを出した場合の決定論的フロア。合計尺の上限は設けない
@@ -286,8 +319,13 @@ async def _auto_segment_narrative(text: str) -> str:
 
 
 def _seg_video_path(run_id: str, num: int, label: str, prefix: str) -> Path:
-    """出力prefixはi2v/t2vそれぞれのV5ファイル側から渡す(i2v5/t2v5)。"""
-    return cfg.GENERATED_DIR / f"{prefix}_{run_id}_seg{num:02d}_{label}.mp4"
+    """出力prefixはi2v/t2vそれぞれのV5ファイル側から渡す(i2v5/t2v5)。
+    labelは"00:07-00:10"のようにコロンを含みうるが、コロンはWindowsのファイル名で
+    禁止文字(os.renameがWinError 123で失敗する、実機確認済み)なので、ファイル名にする
+    際だけ安全な文字へ置換する(labelを消費する側はファイル名からの単純な文字列取り出し
+    のみで、コロンを前提にした再パースは行っていない)。"""
+    safe_label = label.replace(":", ".")
+    return cfg.GENERATED_DIR / f"{prefix}_{run_id}_seg{num:02d}_{safe_label}.mp4"
 
 
 def _split_direct_prompt(text: str) -> tuple[str, str]:
@@ -338,7 +376,7 @@ def _parse_prompts_txt(path: Path) -> tuple[dict, list[dict]]:
     text = path.read_text(encoding="utf-8")
     heads = list(_SEG_HEADER_RE.finditer(text))
     if not heads:
-        raise ValueError(f"{path.name} にセグメントが見つかりません")
+        raise ValueError(f"No segments found in {path.name}")
 
     header: dict = {}
     for line in text[: heads[0].start()].splitlines():
@@ -352,7 +390,7 @@ def _parse_prompts_txt(path: Path) -> tuple[dict, list[dict]]:
         block = text[m.end(): end]
         pm = re.search(r"--- LTX prompt ---\n", block)
         if not pm:
-            raise ValueError(f"セグメント{m.group(1)}の '--- LTX prompt ---' が見つかりません")
+            raise ValueError(f"'--- LTX prompt ---' not found for segment {m.group(1)}")
         km = re.search(r"--- Keyframe prompt ---\n", block)
         kf_prompt = block[km.end(): pm.start()].strip() if km else ""
         segments.append({
@@ -1309,23 +1347,23 @@ def _parse_json_segments(raw: str, count: int) -> list[dict]:
     except json.JSONDecodeError:
         m = re.search(r"\[.*\]", raw, re.DOTALL)
         if not m:
-            raise ValueError(f"JSON配列が見つかりません:\n{raw}")
+            raise ValueError(f"No JSON array found:\n{raw}")
         try:
             data = json.loads(m.group(0))
         except json.JSONDecodeError as e:
-            raise ValueError(f"JSON構文エラー({e}):\n{raw}")
+            raise ValueError(f"JSON syntax error ({e}):\n{raw}")
 
     if not isinstance(data, list):
-        raise ValueError(f"JSON配列(list)ではありません:\n{raw}")
+        raise ValueError(f"Not a JSON array (list):\n{raw}")
 
     seen: set[int] = set()
     for item in data:
         if not isinstance(item, dict) or "segment" not in item:
-            raise ValueError(f"各要素に整数の\"segment\"キーが必要です:\n{raw}")
+            raise ValueError(f"Every element must have an integer \"segment\" key:\n{raw}")
         seen.add(item["segment"])
 
     if seen != set(range(1, count + 1)):
-        raise ValueError(f"segment番号が1..{count}と一致しません(実際: {sorted(seen)}):\n{raw}")
+        raise ValueError(f"Segment numbers don't match 1..{count} (got: {sorted(seen)}):\n{raw}")
 
     return sorted(data, key=lambda d: d["segment"])
 

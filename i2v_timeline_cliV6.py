@@ -25,9 +25,15 @@ import asyncio
 import random
 import subprocess
 import re
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+# Windowsはデフォルトのコンソール文字コード(cp932等)がUnicode記号(en-dash、矢印等)を
+# 表現できずUnicodeEncodeErrorで落ちるため、環境に関わらずUTF-8で固定する
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
 
 from openai import AsyncOpenAI
 
@@ -37,9 +43,9 @@ from modules.comfyui_client import generate_image, generate_t2v_video, generate_
 from modules.timeline_common import (
     _fmt_elapsed,
     _fmt_duration,
-    _parse_prompt, _seg_video_path, _concat_segments, _run_upscale,
+    _seg_video_path, _concat_segments, _run_upscale,
     _split_direct_prompt, _write_direct_prompts_txt, _parse_prompts_txt,
-    _auto_segment_narrative, _LINT_MAX_ATTEMPTS,
+    _LINT_MAX_ATTEMPTS, _parse_prompt_or_auto_segment,
     _has_word, _animals_in, _stem, _ANIMAL_ABSENT_RE,
     _ANIMAL_BEHIND_RE, _ANIMAL_BEHIND_LOOSE_RE, _enforce_animal_beside,
     _AUDIO_HEADER_RE, _enforce_animal_sound,
@@ -1307,8 +1313,17 @@ async def _run_retry(args: argparse.Namespace) -> None:
             print(f"[i2v-tl6] エラー: --keep 指定ですがセグメント{n}のキーフレームが見つかりません: {kf_path.name} — スキップ")
             continue
         dest = _seg_video_path(run_id, n, seg["label"], "i2v6")
+        # 動画側の退避は dest との厳密パス一致ではなく、セグメント番号でのglobマッチで探す。
+        # ファイル名のラベル表記(例: コロン→ドット、Windowsのファイル名禁止文字対応で変更)が
+        # 過去に変わったrunをretryすると、旧表記の"現在有効"ファイルが厳密パス一致では見つからず
+        # 退避されないまま新ファイルと同一セグメント番号で並存してしまう事故があったため
+        # (studio側で同一segment番号が重複しUIの選択状態が壊れる、実機で確認済み)。
+        existing_videos = [
+            p for p in cfg.GENERATED_DIR.glob(f"i2v6_{run_id}_seg{n:02d}_*.mp4")
+            if "_old" not in p.stem
+        ]
         # --keep 時はキーフレームをそのまま使うため退避対象から外す(動画側だけ退避)
-        targets_to_backup = (dest,) if args.keep else (dest, kf_path)
+        targets_to_backup = existing_videos if args.keep else existing_videos + [kf_path]
         for old in targets_to_backup:
             if old.exists():
                 k = 1
@@ -1565,22 +1580,10 @@ async def main() -> None:
 
     text = prompt_path.read_text(encoding="utf-8")
 
-    auto_segmented = False
-    try:
-        global_desc, segments, ambience = _parse_prompt(text)
-    except ValueError as e:
-        if "ヘッダーもタイムスタンプも見つかりません" not in str(e):
-            print(f"[i2v-tl6] パースエラー: {e}")
-            return
-        print(f"[i2v-tl6] タイムライン形式が見つかりません — Pass -1で自動分割します(目安15秒、3秒ビート基本)...")
-        text = await _auto_segment_narrative(text)
-        print(f"[i2v-tl6] 自動分割結果:\n{text}\n")
-        try:
-            global_desc, segments, ambience = _parse_prompt(text)
-        except ValueError as e2:
-            print(f"[i2v-tl6] 自動分割後もパースエラー: {e2}")
-            return
-        auto_segmented = True
+    result = await _parse_prompt_or_auto_segment(text, "[i2v-tl6]")
+    if result is None:
+        return
+    global_desc, segments, ambience, auto_segmented = result
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = cfg.GENERATED_DIR

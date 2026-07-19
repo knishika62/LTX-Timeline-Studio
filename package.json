@@ -5,10 +5,7 @@
   "type": "module",
   "description": "Node.js harness for t2v/i2v V6 timeline CLIs (rewrite of x-post v6_harness_v2.py)",
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "node --watch server/index.js",
-    "build": "npm --prefix client run build",
-    "postinstall": "npm --prefix client install",
+    "postinstall": "npm --prefix studio/client install",
     "studio:start": "node studio/server/index.js",
     "studio:dev": "node --watch studio/server/index.js",
     "studio:build": "npm --prefix studio/client run build"

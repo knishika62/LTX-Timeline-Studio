@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { PREFIXES, SCRIPTS, MAIN_PYTHON } from "./config.js";
 import { pythonModuleArgs, streamCommand } from "./proc.js";
 import { findRunId, runSnapshot } from "./scan.js";
@@ -77,21 +78,28 @@ class Job {
       // (2026-07-18以前はconda run経由で起動しており、conda run自身がSIGTERMを子プロセスへ
       // 転送しないという別の理由でも同じ対策が必要だった。venv直呼びに変えた現在もこの対策自体は
       // 引き続き有効なため残している)
-      try {
-        process.kill(-proc.pid, "SIGTERM");
-      } catch {
-        proc.kill("SIGTERM"); // グループkillが失敗した場合の保険
-      }
-      // 一定時間待って死んでいなければ、同じくグループへSIGKILLでエスカレーション
-      setTimeout(() => {
-        if (proc.exitCode === null) {
-          try {
-            process.kill(-proc.pid, "SIGKILL");
-          } catch {
-            /* すでに終了済み */
-          }
+      // Windowsには「負のpidでプロセスグループへ届く」というPOSIXの概念自体が無く、
+      // process.kill(-pid, ...)は失敗する(fallbackのproc.kill()は対象プロセス単体しか
+      // 殺せずffmpeg等の子孫が生き残る)。taskkillの/Tでプロセスツリーごと強制終了する。
+      if (process.platform === "win32") {
+        spawn("taskkill", ["/pid", String(proc.pid), "/T", "/F"], { windowsHide: true });
+      } else {
+        try {
+          process.kill(-proc.pid, "SIGTERM");
+        } catch {
+          proc.kill("SIGTERM"); // グループkillが失敗した場合の保険
         }
-      }, 5000);
+        // 一定時間待って死んでいなければ、同じくグループへSIGKILLでエスカレーション
+        setTimeout(() => {
+          if (proc.exitCode === null) {
+            try {
+              process.kill(-proc.pid, "SIGKILL");
+            } catch {
+              /* すでに終了済み */
+            }
+          }
+        }, 5000);
+      }
       return true;
     }
     return false;

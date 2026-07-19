@@ -78,7 +78,7 @@ async def _wait_for_output(prompt_id: str, server_url: str, timeout_s: int) -> d
                     if isinstance(msg, list) and len(msg) == 2 and msg[0] == "execution_error":
                         info = msg[1]
                         raise RuntimeError(
-                            f"ComfyUI実行エラー(node {info.get('node_id')} [{info.get('node_type')}]): "
+                            f"ComfyUI execution error (node {info.get('node_id')} [{info.get('node_type')}]): "
                             f"{info.get('exception_message')}")
                 return entry.get("outputs", {})
             await asyncio.sleep(POLL_INTERVAL_S)
@@ -186,7 +186,7 @@ async def upscale_video(video_server_filename: str) -> Path:
     node_out = outputs.get("9", {})
     files = node_out.get("videos") or node_out.get("images") or node_out.get("gifs") or []
     if not files:
-        raise RuntimeError(f"アップスケール動画出力が見つかりません: {node_out}")
+        raise RuntimeError(f"Upscale video output not found: {node_out}")
     file_info = files[0]
     filename = file_info["filename"]
     subfolder = file_info.get("subfolder", "")
@@ -229,7 +229,7 @@ async def generate_t2v_video(prompt: str, width: int = 720, height: int = 1280, 
     node_out = outputs.get("75", {})
     files = node_out.get("videos") or node_out.get("images") or node_out.get("gifs") or []
     if not files:
-        raise RuntimeError(f"T2V動画出力が見つかりません: {node_out}")
+        raise RuntimeError(f"T2V video output not found: {node_out}")
     file_info = files[0]
     filename = file_info["filename"]
     subfolder = file_info.get("subfolder", "")
@@ -264,7 +264,7 @@ async def generate_video_10e(prompt: str, keyframe_server_filename: str, width: 
     node_out = outputs.get("597", {})
     files = node_out.get("gifs") or node_out.get("videos") or []
     if not files:
-        raise RuntimeError(f"10Eros動画出力が見つかりません: {node_out}")
+        raise RuntimeError(f"10Eros video output not found: {node_out}")
     file_info = files[0]
     filename = file_info["filename"]
     subfolder = file_info.get("subfolder", "")
@@ -302,7 +302,7 @@ async def generate_video_refine_ltx23(prompt: str, keyframe_server_filename: str
     node_out = outputs.get("351", {})
     files = node_out.get("videos") or node_out.get("gifs") or node_out.get("images") or []
     if not files:
-        raise RuntimeError(f"refine_ltx2_3動画出力が見つかりません: {node_out}")
+        raise RuntimeError(f"refine_ltx2_3 video output not found: {node_out}")
     file_info = files[0]
     filename = file_info["filename"]
     subfolder = file_info.get("subfolder", "")

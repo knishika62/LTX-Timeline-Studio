@@ -16,11 +16,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
 
 import httpx
+
+# Windowsはデフォルトのコンソール文字コード(cp932等)がUnicode記号(en-dash、矢印等)を
+# 表現できずUnicodeEncodeErrorで落ちるため、環境に関わらずUTF-8で固定する
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
 
 from modules import pipeline_config as cfg
 
@@ -94,10 +100,10 @@ async def _poll_result(client: httpx.AsyncClient, base_url: str, task_id: str) -
         if status == 1:
             return json.loads(item["result"])
         if status == 2:
-            raise RuntimeError(f"生成失敗(task_id={task_id}): {progress}")
+            raise RuntimeError(f"Generation failed (task_id={task_id}): {progress}")
         await asyncio.sleep(_POLL_INTERVAL_S)
         elapsed += _POLL_INTERVAL_S
-    raise TimeoutError(f"生成がタイムアウトしました(task_id={task_id}, {_POLL_TIMEOUT_S}秒)")
+    raise TimeoutError(f"Generation timed out (task_id={task_id}, {_POLL_TIMEOUT_S}s)")
 
 
 async def _download_take(client: httpx.AsyncClient, base_url: str, file_ref: str, out_path: Path) -> None:

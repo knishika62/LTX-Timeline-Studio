@@ -19,9 +19,15 @@ import argparse
 import asyncio
 import re
 import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+# Windowsはデフォルトのコンソール文字コード(cp932等)がUnicode記号(en-dash、矢印等)を
+# 表現できずUnicodeEncodeErrorで落ちるため、環境に関わらずUTF-8で固定する
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
 
 from openai import AsyncOpenAI
 
@@ -30,9 +36,9 @@ from modules.comfyui_client import generate_t2v_video
 from modules.timeline_common import (
     _fmt_elapsed,
     _fmt_duration,
-    _parse_prompt, _seg_video_path, _concat_segments, _run_upscale,
+    _seg_video_path, _concat_segments, _run_upscale,
     _split_direct_prompt, _write_direct_prompts_txt, _parse_prompts_txt,
-    _auto_segment_narrative, _LINT_MAX_ATTEMPTS,
+    _parse_prompt_or_auto_segment, _LINT_MAX_ATTEMPTS,
     _has_word, _animals_in, _stem, _ANIMAL_ABSENT_RE,
     _ANIMAL_BEHIND_RE, _ANIMAL_BEHIND_LOOSE_RE, _enforce_animal_beside,
     _AUDIO_HEADER_RE, _enforce_animal_sound,
@@ -962,14 +968,24 @@ async def _run_retry(args: argparse.Namespace) -> None:
     for n in targets:
         seg = seg_by_num[n]
         dest = _seg_video_path(run_id, n, seg["label"], "t2v6")
-        if not dest.exists():
+        # dest との厳密パス一致ではなく、セグメント番号でのglobマッチで既存の"現在有効"動画を探す。
+        # ファイル名のラベル表記(例: コロン→ドット、Windowsのファイル名禁止文字対応で変更)が
+        # 過去に変わったrunをretryすると、旧表記のファイルが厳密パス一致では見つからず退避されない
+        # まま新ファイルと同一セグメント番号で並存してしまう事故があったため
+        # (studio側で同一segment番号が重複しUIの選択状態が壊れる、実機で確認済み)。
+        existing = [
+            p for p in cfg.GENERATED_DIR.glob(f"t2v6_{run_id}_seg{n:02d}_*.mp4")
+            if "_old" not in p.stem
+        ]
+        if not existing:
             print(f"[t2v-tl6] 警告: 既存セグメントが見つかりません(新規生成します): {dest.name}")
         else:
-            k = 1
-            while (backup := dest.with_name(dest.stem + f"_old{k}.mp4")).exists():
-                k += 1
-            dest.rename(backup)
-            print(f"[t2v-tl6] 退避: {dest.name} → {backup.name}")
+            for old in existing:
+                k = 1
+                while (backup := old.with_name(old.stem + f"_old{k}.mp4")).exists():
+                    k += 1
+                old.rename(backup)
+                print(f"[t2v-tl6] 退避: {old.name} → {backup.name}")
         dests[n] = dest
 
     # 動画再生成は保存済みプロンプトの再利用のみでLLM呼び出しが無く、他セグメントにも
@@ -1132,22 +1148,10 @@ async def main() -> None:
 
     text = prompt_path.read_text(encoding="utf-8")
 
-    auto_segmented = False
-    try:
-        global_desc, segments, ambience = _parse_prompt(text)
-    except ValueError as e:
-        if "ヘッダーもタイムスタンプも見つかりません" not in str(e):
-            print(f"[t2v-tl6] パースエラー: {e}")
-            return
-        print(f"[t2v-tl6] タイムライン形式が見つかりません — Pass -1で自動分割します(目安15秒、3秒ビート基本)...")
-        text = await _auto_segment_narrative(text)
-        print(f"[t2v-tl6] 自動分割結果:\n{text}\n")
-        try:
-            global_desc, segments, ambience = _parse_prompt(text)
-        except ValueError as e2:
-            print(f"[t2v-tl6] 自動分割後もパースエラー: {e2}")
-            return
-        auto_segmented = True
+    result = await _parse_prompt_or_auto_segment(text, "[t2v-tl6]")
+    if result is None:
+        return
+    global_desc, segments, ambience, auto_segmented = result
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = cfg.GENERATED_DIR

@@ -25,7 +25,13 @@ export function pythonModuleArgs(pythonBin, module, args = []) {
  * venv直呼びに変えた現在も、子孫プロセスを確実に道連れにするため対策自体は残している)。 */
 export function streamCommand(cmd, args, { cwd = BASE_DIR, onLine, signal, detached = false } = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { cwd, env: process.env, detached });
+    // Windowsではdetached:trueを指定すると、windowsHideの有無に関わらず子プロセスが
+    // 強制的に別コンソールウィンドウで起動する(Node.jsの既知の制約)。detachedはPOSIXの
+    // プロセスグループkill(process.kill(-pid, ...))のために必要だが、Windows側は既にjobs.js
+    // の Stop 処理を taskkill /T(PIDの親子関係でプロセスツリーを辿る、プロセスグループ不要)に
+    // 切り替え済みのため、Windowsではdetachedそのものが不要かつ実害(別ウィンドウ)しかない。
+    const win = process.platform === "win32";
+    const proc = spawn(cmd, args, { cwd, env: process.env, detached: win ? false : detached, windowsHide: true });
     if (signal) signal.proc = proc;
     let buf = "";
     const feed = (chunk) => {
@@ -49,7 +55,7 @@ export function streamCommand(cmd, args, { cwd = BASE_DIR, onLine, signal, detac
 /** コマンドを実行して stdout を文字列で返す(非0終了は stderr 込みで reject)。 */
 export function runCommand(cmd, args, { cwd = BASE_DIR, stdin } = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { cwd, env: process.env });
+    const proc = spawn(cmd, args, { cwd, env: process.env, windowsHide: true });
     let out = "";
     let err = "";
     proc.stdout.on("data", (c) => (out += c));

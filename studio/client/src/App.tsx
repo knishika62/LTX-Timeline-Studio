@@ -215,16 +215,6 @@ function ClipThumbMedia({ kind, src }: { kind: "image" | "video"; src: string })
   );
 }
 
-/** modules/timeline_common.py の _parse_prompt は日本語でraiseする(実harnessとの共有ロジックの
- * ため直接編集はしない)。2026-07-17ユーザー報告の該当メッセージのみ英訳する。未知の文言は
- * そのまま出す(黙って握りつぶさない)。 */
-function translateParseError(msg: string): string {
-  if (msg.includes("ヘッダーもタイムスタンプも見つかりません")) {
-    return "No 'Timeline:' header or timestamp found.";
-  }
-  return msg;
-}
-
 /** server側のtsName()(studio/server/index.js)と同じ命名規則。Save後に次回用のファイル名を
  * ここで進める(サーバーには問い合わせない、次に押されるSaveまでは実ファイルを作らない)。 */
 function newHarnessFilename(): string {
@@ -1359,7 +1349,7 @@ function NewInspector({ onGenerate, hidden, running, resetKey }: {
         {validation && (
           validation.ok
             ? <div className="status ok"><Icon name="check" size={12} /> {validation.segments} segments, {validation.totalSeconds}s</div>
-            : <div className="status error">{translateParseError(validation.error ?? "")}</div>
+            : <div className="status error">{validation.error ?? ""}</div>
         )}
         <div className="inspector-row" style={{ marginTop: 10 }}>
           <label className="field" style={{ flex: 1 }}>

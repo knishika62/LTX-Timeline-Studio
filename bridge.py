@@ -18,6 +18,13 @@ import json
 import sys
 from pathlib import Path
 
+# Windowsはデフォルトのコンソール文字コード(cp932等)がUnicode記号(en-dash、矢印等)を
+# 表現できずUnicodeEncodeErrorで落ちる、または入力側で誤デコードされ文字化けするため、
+# 環境に関わらず標準入出力をすべてUTF-8で固定する(stdin: Node側からUTF-8で渡されるプロンプト本文の受け口)
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+sys.stdin.reconfigure(encoding="utf-8")
+
 
 def _out(obj: dict, code: int = 0) -> None:
     print(json.dumps(obj, ensure_ascii=False))
