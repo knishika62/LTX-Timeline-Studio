@@ -28,7 +28,6 @@ workflows/*
 __pycache__/
 .DS_Store
 CLAUDE.md
-MEMO.md
 AGENTS.md
 /server/
 /client/
