@@ -55,6 +55,7 @@ from modules.timeline_common import (
     _extract_character_line,
     _trim_character_for_scale,
     _GARMENT_WORD_RE, _garments_missing, _state_details_missing, _enforce_garments_present,
+    _enforce_state_details_present,
     _enforce_realism_default,
     _GENDER_WORDS, _GENDER_SYNONYMS, _AGE_PATTERN_RE, _character_tokens_missing,
     _write_scene_description,
@@ -718,6 +719,7 @@ async def _format_to_ltx_prompt(scene_desc: str, global_desc: str, ambience: str
     if not content:
         content = (getattr(resp.choices[0].message, "reasoning_content", None) or "").strip()
     content = _strip_reference_echo(content, global_desc)
+    content = _strip_reference_echo(content, state)
     content = _enforce_animal_first(content, action)
     content = _enforce_character_line(content, character_line)
     content = _enforce_animal_sound(content, scene_desc)
@@ -742,6 +744,8 @@ async def _format_to_ltx_prompt(scene_desc: str, global_desc: str, ambience: str
     content = _enforce_dialogue_attribution(content, action)
     # C17(衣装)のLLM fixerが従わなかった場合の最終防衛(2026-07-10)
     content = _enforce_garments_present(content, state, direction)
+    # C18(時刻/天気/外見)のLLM fixerが従わなかった場合の最終防衛
+    content = _enforce_state_details_present(content, state, direction)
     # 明示的にアニメ/イラスト系を要求していない限り写実系をデフォルトにする最終防衛(2026-07-10、
     # ユーザー指摘: 「明示的にアニメ、イラストと書かれてない限りはリアル系で」)
     return _enforce_realism_default(content, global_desc)

@@ -1191,6 +1191,21 @@ def _enforce_garments_present(text: str, state: str, direction: str) -> str:
     return text.rstrip() + " " + addition
 
 
+def _enforce_state_details_present(text: str, state: str, direction: str) -> str:
+    """C18(STATE DETAILS PRESENT)のLLM fixerが従わず時刻/天気/外見の断片が
+    直りきらないことがあるため、最終防衛としてPythonでSTATEの原文節そのまま
+    追記して保証する(_enforce_garments_presentと同じ設計)。
+    feet-onlyショットはC18検出自体が対象外(顔/髪が映らない)のため、ここも同様に対象外にする。"""
+    if not state or "feet" in direction.lower():
+        return text
+    missing = _state_details_missing(text, state)
+    if not missing:
+        return text
+    addition = ". ".join(c.rstrip(".") for c in missing) + "."
+    addition = addition[0].upper() + addition[1:]
+    return text.rstrip() + " " + addition
+
+
 # 明示的にアニメ/イラスト系スタイルが参照文(global_desc)に要求されていない限り、生成は
 # 写実系にデフォルトする(2026-07-10、ユーザー指摘: 「明示的にアニメ、イラストと書かれてない
 # 限りはリアル系で」)。日本語プロンプトファイルも多いため英語・カタカナ/漢字の両方で判定する

@@ -62,6 +62,7 @@ from modules.timeline_common import (
     _extract_character_line,
     _trim_character_for_scale,
     _GARMENT_WORD_RE, _garments_missing, _state_details_missing, _enforce_garments_present,
+    _enforce_state_details_present,
     _enforce_realism_default, _ANIME_STYLE_RE, _REALISM_HINT_RE,
     _GENDER_WORDS, _GENDER_SYNONYMS, _AGE_PATTERN_RE, _character_tokens_missing,
     _write_scene_description,
@@ -771,6 +772,7 @@ async def _format_keyframe_prompt(scene_desc: str, global_desc: str, duration: i
     if not content:
         content = (getattr(resp.choices[0].message, "reasoning_content", None) or "").strip()
     content = _strip_reference_echo(content, global_desc)
+    content = _strip_reference_echo(content, state)
     content = _KF_ARTIFACT_RE.sub("", content)
     content = re.sub(r"\s{2,}", " ", content).strip(" ,;")
     content = _enforce_animal_beside(content)
@@ -891,6 +893,8 @@ async def _format_keyframe_prompt(scene_desc: str, global_desc: str, duration: i
     content = _strip_offscreen_ground_mentions(content, direction)
     # KF2(衣装)のLLM fixerが従わなかった場合の最終防衛(2026-07-10、t2vと同じ設計)
     content = _enforce_garments_present(content, state, direction)
+    # KF2(時刻/天気/外見)のLLM fixerが従わなかった場合の最終防衛
+    content = _enforce_state_details_present(content, state, direction)
     # 明示的にアニメ/イラスト系を要求していない限り写実系をデフォルトにする最終防衛(2026-07-10、
     # ユーザー指摘: 「明示的にアニメ、イラストと書かれてない限りはリアル系で」。style_tail側の
     # 対策に加え、キーフレーム本文自体にも二重で保証する)
