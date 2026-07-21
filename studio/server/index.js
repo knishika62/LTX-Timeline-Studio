@@ -46,9 +46,9 @@ app.post("/api/prompt-files", wrap(async (req, res) => {
   res.json({ ...saved, validation: await validatePrompt(text) });
 }));
 app.post("/api/draft", wrap(async (req, res) => {
-  const { keywords, durationHint = 20, minBeat = 3 } = req.body;
+  const { keywords, durationHint = 20, minBeat = 3, variety = "normal" } = req.body;
   if (!keywords?.trim()) return res.status(400).json({ error: "enter some keywords first" });
-  const prompt = await draftTimelinePrompt(keywords, Math.round(durationHint), Math.round(minBeat));
+  const prompt = await draftTimelinePrompt(keywords, Math.round(durationHint), Math.round(minBeat), variety);
   const [summary, validation] = await Promise.all([summarizePromptJa(prompt), validatePrompt(prompt)]);
   res.json({ prompt, summary, validation });
 }));

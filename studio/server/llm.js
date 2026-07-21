@@ -50,6 +50,65 @@ concrete ones (not abstract). Output ONLY these five labeled fields, nothing els
 no timeline, no commentary.
 `;
 
+const SETUP_OMNIBUS_SYSTEM = `You are setting up the fixed elements shared across an ANTHOLOGY of unrelated short
+vignettes for an AI video generation pipeline. Given a short Japanese or English keyword/idea
+from the user, decide ONLY the following:
+
+Main Subject:
+<1-2 sentences: nationality/age/hair/build ONLY. Do NOT mention wardrobe/outfit here — each
+vignette has its own completely different outfit decided later, not a shared default.>
+
+Location:
+<Write exactly: "Varies per vignette — decided independently for each scene below.">
+
+Visual Style:
+<short phrase, shared tone across all vignettes, e.g. "Ultra-realistic observational documentary, natural lighting">
+
+Camera Style:
+<short phrase, shared across all vignettes, e.g. "Handheld, natural micro-shake">
+
+Audio:
+<Write exactly: "Ambient sound specific to each vignette, decided independently below.">
+
+If the user didn't specify a character concept, invent a reasonable, concrete one. Output ONLY
+these five labeled fields, nothing else — no timeline, no commentary.
+`;
+
+const BEAT_PLAN_OMNIBUS_SYSTEM = `You are planning the vignette structure of an ANTHOLOGY for an AI video generation pipeline —
+this is NOT one continuous story. Each beat is its own self-contained, UNRELATED vignette.
+Given the character setup below and a target total duration, decide WHAT happens in each
+vignette and HOW LONG it should run.
+
+Output ONLY a numbered list, one vignette per beat, in this exact format:
+1. (Xs) location + time of day + outfit + one-line gist of the action
+2. (Ys) ...
+
+Rules:
+- Every vignette MUST use a DIFFERENT location, DIFFERENT time of day, and DIFFERENT outfit
+  from every other vignette in the list — no two vignettes may share a setting or outfit.
+- Do NOT carry over location/time/outfit from the previous vignette; treat each as a hard cut
+  to a brand new, disconnected scene.
+- Each beat is at least 3 seconds.
+- Draw on the user's original keywords for variety/theme, but invent concrete distinct settings
+  for each vignette if the keywords don't specify enough of them.
+Output ONLY the numbered list, no commentary.
+`;
+
+const BEAT_WRITE_OMNIBUS_SYSTEM = `You are writing the final action-description prose for each vignette of an anthology, given the
+character setup and a list of vignettes (each already has its duration and a one-line gist).
+
+Rules:
+- Output ONLY a numbered list, one line per beat, matching the input beat numbers.
+- Unlike a continuous scene, each vignette is INDEPENDENT: always write the FULL setting for
+  that vignette — location, time of day, and outfit — in concrete detail, even though it was
+  already sketched in the gist. Never assume it carries over from a previous beat.
+- For every garment, pin down its silhouette explicitly: sleeve length for tops
+  (sleeveless/short-sleeve/long-sleeve), hem length for skirts/dresses (mini/knee-length/midi/
+  floor-length). A bare garment name like "crop top" or "skirt" is NOT specific enough.
+- Any spoken dialogue must be written in Japanese in quotes, with an English gloss in parentheses.
+- Keep it natural and concrete, one or two sentences per vignette. No commentary, no extra headers.
+`;
+
 const BEAT_PLAN_SYSTEM = `You are planning the shot-by-shot beat structure of a short scene for an AI video
 generation pipeline, given the scene setup below and a target total duration. Decide
 WHAT happens in each beat and HOW LONG it should run — do not write final prose yet,
@@ -174,8 +233,13 @@ function parseNumberedLines(raw, count) {
 
 /** キーワード → Timeline形式プロンプト(3パス構成、Gradio版 draft_timeline_prompt の移植)。
  * タイムスタンプはLLMに計算させず、Pass2の秒数をこちらで積算する(「事実はコード、文章はLLM」)。 */
-export async function draftTimelinePrompt(keywords, durationHintS, minBeatS = 3) {
-  const setupRaw = await runLLM(SETUP_SYSTEM, keywords.trim(), 0.8);
+export async function draftTimelinePrompt(keywords, durationHintS, minBeatS = 3, variety = "normal") {
+  const omnibus = variety === "omnibus";
+  const setupSystem = omnibus ? SETUP_OMNIBUS_SYSTEM : SETUP_SYSTEM;
+  const planSystem = omnibus ? BEAT_PLAN_OMNIBUS_SYSTEM : BEAT_PLAN_SYSTEM;
+  const writeSystem = omnibus ? BEAT_WRITE_OMNIBUS_SYSTEM : BEAT_WRITE_SYSTEM;
+
+  const setupRaw = await runLLM(setupSystem, keywords.trim(), 0.8);
 
   // Pass2にはSetup結果だけでなく元キーワードも渡す(Setupは固定要素しか決めないため、
   // 「浴衣に着替える」「猫」のようなビート要素が silently 消える事故の再発防止、Gradio版と同じ)
@@ -183,7 +247,7 @@ export async function draftTimelinePrompt(keywords, durationHintS, minBeatS = 3)
     `Original idea/keywords from the user:\n${keywords.trim()}\n\n` +
     `Scene setup (already decided):\n${setupRaw}\n\n` +
     `Target total duration: about ${durationHintS} seconds.`;
-  const planRaw = await runLLM(BEAT_PLAN_SYSTEM, planUser, 0.8);
+  const planRaw = await runLLM(planSystem, planUser, 0.8);
 
   const beats = [];
   for (const line of planRaw.split("\n")) {
@@ -193,7 +257,7 @@ export async function draftTimelinePrompt(keywords, durationHintS, minBeatS = 3)
   if (!beats.length) throw new Error(`Beat planning pass produced no parseable beats:\n${planRaw}`);
 
   const gistList = beats.map((b, i) => `${i + 1}. ${b.gist} (duration ${b.dur}s)`).join("\n");
-  const writeRaw = await runLLM(BEAT_WRITE_SYSTEM, `Scene setup:\n${setupRaw}\n\nBeats to write:\n${gistList}`, 0.7);
+  const writeRaw = await runLLM(writeSystem, `Scene setup:\n${setupRaw}\n\nBeats to write:\n${gistList}`, 0.7);
   const prose = parseNumberedLines(writeRaw, beats.length);
 
   const lines = [];

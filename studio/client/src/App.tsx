@@ -1178,6 +1178,7 @@ function NewInspector({ onGenerate, hidden, running, resetKey }: {
   const { fontSize, changeFontSize } = usePromptFontSize();
   const [mode, setMode] = useState<"draft" | "file">("draft");
   const [keywords, setKeywords] = useState("");
+  const [variety, setVariety] = useState<"normal" | "omnibus">("normal");
   const [durationHint, setDurationHint] = useState(20);
   const [minBeat, setMinBeat] = useState(3);
   const [files, setFiles] = useState<PromptFile[]>([]);
@@ -1214,6 +1215,7 @@ function NewInspector({ onGenerate, hidden, running, resetKey }: {
   const clearAll = () => {
     setMode("draft");
     setKeywords("");
+    setVariety("normal");
     setDurationHint(20);
     setMinBeat(3);
     setSelectedFile("");
@@ -1231,7 +1233,7 @@ function NewInspector({ onGenerate, hidden, running, resetKey }: {
     setDrafting(true);
     try {
       const r = await api<{ prompt: string; summary: string; validation: Validation }>("/api/draft", {
-        json: { keywords, durationHint, minBeat },
+        json: { keywords, durationHint, minBeat, variety },
       });
       setPrompt(r.prompt);
       setSummary(r.summary);
@@ -1315,6 +1317,10 @@ function NewInspector({ onGenerate, hidden, running, resetKey }: {
               <label>Keywords / idea</label>
               <textarea rows={4} value={keywords} onChange={(e) => setKeywords(e.target.value)}
                 placeholder="e.g. a woman drinking coffee at a morning cafe" style={{ fontSize }} />
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <SegRadio options={["normal", "omnibus"] as const} value={variety} onChange={setVariety}
+                labels={{ normal: "Normal", omnibus: "Omnibus" }} />
             </div>
             <div className="inspector-row" style={{ marginBottom: 10 }}>
               <label className="field" style={{ flex: 1 }}>
