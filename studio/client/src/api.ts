@@ -41,6 +41,8 @@ export type LibraryRunDetail = {
 };
 export type LibraryPeriod = "today" | "7d" | "30d" | "all";
 export type LibraryRunsResponse = { runs: LibraryRunInfo[]; truncated: boolean; total: number };
+export type BgmFile = { name: string; path: string; mt: number };
+export type BgmFilesResponse = { files: BgmFile[]; truncated: boolean; total: number };
 
 /** メディア配信URL(サーバー側でパス許可リスト検査+Range対応) */
 export const media = (p: string, v?: number | string | null) =>

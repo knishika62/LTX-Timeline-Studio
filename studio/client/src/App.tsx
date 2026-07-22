@@ -4,7 +4,7 @@ import { useLightbox } from "./Lightbox";
 import {
   api, media, uploadFile, useJob, useJobLogMirror,
   type Engine, type LibraryRunInfo, type LibraryRunDetail, type LibraryRunsResponse,
-  type LibraryPeriod, type PromptFile, type SegPrompt, type Validation,
+  type LibraryPeriod, type PromptFile, type SegPrompt, type Validation, type BgmFile, type BgmFilesResponse,
 } from "./api";
 
 type ViewMode = "segment" | "final" | "cass" | "upscale";
@@ -1743,7 +1743,11 @@ function CassPanel({ options, onLog, onResult }: {
 }) {
   const [acestepConfigured, setAcestepConfigured] = useState(false);
   const [bgmMode, setBgmMode] = useState<"File" | "Generate">("File");
-  const [bgmFiles, setBgmFiles] = useState<{ name: string; path: string }[]>([]);
+  const [bgmFiles, setBgmFiles] = useState<BgmFile[]>([]);
+  const [bgmSearchInput, setBgmSearchInput] = useState("");
+  const [bgmSearch, setBgmSearch] = useState("");
+  const [bgmTruncated, setBgmTruncated] = useState(false);
+  const [bgmTotal, setBgmTotal] = useState(0);
   const [bgmPath, setBgmPath] = useState("");
   const [bgmPrompt, setBgmPrompt] = useState("");
   const [bgmDuration, setBgmDuration] = useState(60);
@@ -1770,8 +1774,23 @@ function CassPanel({ options, onLog, onResult }: {
 
   useEffect(() => {
     api<{ configured: boolean }>("/api/acestep-config").then((r) => setAcestepConfigured(r.configured)).catch(() => {});
-    api<{ name: string; path: string }[]>("/api/bgm-files").then(setBgmFiles).catch(() => {});
   }, []);
+
+  // 検索は300msデバウンス(Libraryのrun検索と同じパターン)
+  useEffect(() => {
+    const t = setTimeout(() => setBgmSearch(bgmSearchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [bgmSearchInput]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (bgmSearch) params.set("q", bgmSearch);
+    api<BgmFilesResponse>(`/api/bgm-files?${params}`).then((r) => {
+      setBgmFiles(r.files);
+      setBgmTruncated(r.truncated);
+      setBgmTotal(r.total);
+    }).catch(() => {});
+  }, [bgmSearch]);
 
   // 完了したらFinal(中央プレビュー)へ出す。右パネルには小さい動画を出さない(2026-07-17指摘)。
   // onResult/onLogは親の再レンダリングのたび新しい関数参照になるため、依存配列に入れたままだと
@@ -1830,10 +1849,19 @@ function CassPanel({ options, onLog, onResult }: {
       {bgmMode === "File" && (
         <>
           <div className="field" style={{ marginBottom: 10 }}>
-            <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}>
+            <input
+              type="text" placeholder="search BGM filename…" value={bgmSearchInput}
+              onChange={(e) => setBgmSearchInput(e.target.value)}
+            />
+            <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)} style={{ marginTop: 6 }}>
               <option value="">— no BGM (speech+sfx only) —</option>
               {bgmFiles.map((f) => <option key={f.path} value={f.path}>{f.name}</option>)}
             </select>
+            {bgmTruncated && (
+              <div style={{ color: "var(--warn)", fontSize: 11, marginTop: 4 }}>
+                Over {bgmFiles.length} files ({bgmTotal} total) — narrow the search
+              </div>
+            )}
           </div>
           {bgmPath && <div style={{ marginBottom: 10 }}><LabeledWaveform label={bgmFiles.find((f) => f.path === bgmPath)?.name ?? ""} path={bgmPath} /></div>}
         </>

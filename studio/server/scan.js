@@ -142,18 +142,24 @@ export function listGeneratedVideos() {
   return items.slice(0, MAX_LIST_ITEMS).map(({ name, path: p, mt }) => ({ name, path: p, mt }));
 }
 
-/** CASS/bgm/ の再利用BGM一覧(mtime降順) */
-export function listBgmFiles() {
+const BGM_MAX_RESULTS = 50;
+
+/** CASS/bgm/ の再利用BGM一覧(mtime降順)。q でファイル名を部分一致フィルタ(大文字小文字を
+ * 区別、Libraryのrun検索とは異なりユーザー指示で大小文字別に検索できる仕様)し、
+ * 件数急増に備え上限 BGM_MAX_RESULTS 件でスライスする(他の一覧と同じ安全弁パターン)。 */
+export function listBgmFiles({ q } = {}) {
   const exts = new Set([".mp3", ".wav", ".m4a"]);
+  const needle = q ? q.trim() : "";
   const items = [];
   for (const name of listDirSafe(BGM_DIR)) {
-    if (exts.has(path.extname(name).toLowerCase())) {
-      const p = path.join(BGM_DIR, name);
-      items.push({ name, path: p, mt: mtimeOf(p) });
-    }
+    if (!exts.has(path.extname(name).toLowerCase())) continue;
+    if (needle && !name.includes(needle)) continue;
+    const p = path.join(BGM_DIR, name);
+    items.push({ name, path: p, mt: mtimeOf(p) });
   }
   items.sort((a, b) => b.mt - a.mt);
-  return items.map(({ name, path: p, mt }) => ({ name, path: p, mt }));
+  const truncated = items.length > BGM_MAX_RESULTS;
+  return { files: items.slice(0, BGM_MAX_RESULTS), truncated, total: items.length };
 }
 
 // prompts.txt のセグメント見出し正規表現(唯一の定義、prompts.jsもここから読む)

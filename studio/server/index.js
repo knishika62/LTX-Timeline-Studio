@@ -69,7 +69,7 @@ app.get("/api/runs/:engine/:runId/seg/:num/prompt", wrap(async (req, res) => {
   res.json(seg);
 }));
 app.get("/api/videos", (req, res) => res.json(listGeneratedVideos()));
-app.get("/api/bgm-files", (req, res) => res.json(listBgmFiles()));
+app.get("/api/bgm-files", (req, res) => res.json(listBgmFiles({ q: req.query.q ? String(req.query.q) : "" })));
 
 app.get("/api/i2v-engine", (req, res) => {
   res.json({ engine: readEnv().I2V_VIDEO_ENGINE || "default" });
