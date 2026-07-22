@@ -108,6 +108,8 @@ BGM生成機能は [ACE-Step-1.5](https://github.com/ace-step/ACE-Step-1.5) のA
 
 **これは必須ではない。** 後述の「音源分離・BGM合成」(speech/music/sfxの分離・差し替え)自体はACE-Step無しでも問題なく使える。`.env`に`ACESTEP_URL`/`ACESTEP_MODEL`を設定しない場合、studioのCASSパネルでは「Generate」(自動生成)の選択肢が自動的に非表示になり、代わりに「File」モード(手持ちのBGM音声ファイル: mp3/wav/m4aをアップロードまたは選択)でBGMを差し替えられる。
 
+> **手持ちのBGMファイルは `CASS/bgm/` に置く**——「File」モードの「選択」候補一覧はこのフォルダを自動スキャンして表示する(studio上でアップロードした場合も同じ場所に保存される)。
+
 - ACE-Step-1.5側でAPIサーバーを起動しておくこと(Windowsは`start_api_server.bat`、Linux/Macは`start_api_server.sh`)
 - `.env` の `ACESTEP_URL`(APIサーバーのURL)・`ACESTEP_MODEL` をそのサーバーに合わせて設定
 - studio経由では`bridge.py`がライブラリとして呼び出すため意識不要だが、**studioを使わずCLI単体でBGMを生成する場合は`bgm_generate_cli.py`を直接実行する**:
