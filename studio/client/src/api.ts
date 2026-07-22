@@ -137,3 +137,18 @@ export function useJob(jobId: string | null) {
 
   return { log, state, status };
 }
+
+/** ジョブの生ログ(文字列、useJobの.log)の増分を、行単位でonLogへ転記する。
+ * \r(進捗バーの上書き)も改行とみなして区切る。jobId切り替え時は転記済み長さを
+ * リセットする(useJob自体がlogを""に戻すため、こちらも0から数え直す)。 */
+export function useJobLogMirror(jobLog: string, jobId: string | null, onLog: (line: string) => void) {
+  const lastLen = useRef(0);
+  useEffect(() => { lastLen.current = 0; }, [jobId]);
+  useEffect(() => {
+    if (jobLog.length > lastLen.current) {
+      const added = jobLog.slice(lastLen.current);
+      lastLen.current = jobLog.length;
+      added.split(/\r\n|\r|\n/).map((s) => s.trim()).filter(Boolean).forEach((line) => onLog(line));
+    }
+  }, [jobLog, onLog]);
+}

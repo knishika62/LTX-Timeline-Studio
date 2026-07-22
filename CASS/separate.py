@@ -240,13 +240,18 @@ CHECKPOINT_URLS = {
 
 
 def _download_with_progress(url: str, dest: Path) -> None:
+    last_pct = -1
+
     def _report(block_num, block_size, total_size):
+        nonlocal last_pct
         downloaded = block_num * block_size
         if total_size > 0:
             pct = min(100, downloaded * 100 // total_size)
-            print(f"\r[separate] downloading {dest.name}: {pct}% "
-                  f"({downloaded // (1024 * 1024)}MB/{total_size // (1024 * 1024)}MB)",
-                  end="", flush=True)
+            if pct != last_pct:
+                last_pct = pct
+                print(f"\r[separate] downloading {dest.name}: {pct}% "
+                      f"({downloaded // (1024 * 1024)}MB/{total_size // (1024 * 1024)}MB)",
+                      end="", flush=True)
 
     tmp_path = dest.with_suffix(dest.suffix + ".part")
     urllib.request.urlretrieve(url, tmp_path, reporthook=_report)

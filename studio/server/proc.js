@@ -37,7 +37,10 @@ export function streamCommand(cmd, args, { cwd = BASE_DIR, onLine, signal, detac
     const feed = (chunk) => {
       buf += chunk.toString("utf-8");
       let i;
-      while ((i = buf.indexOf("\n")) >= 0) {
+      // \n だけでなく \r(tqdm等の進捗バーが同じ行を上書きする方式)も区切りとして扱う。
+      // \r だけだと\nが来るまでバッファに溜まり続け、ダウンロード進捗等がリアルタイムに
+      // 見えなくなるため。
+      while ((i = buf.search(/[\r\n]/)) >= 0) {
         onLine?.(buf.slice(0, i + 1));
         buf = buf.slice(i + 1);
       }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Icon } from "./Icon";
 import { useLightbox } from "./Lightbox";
 import {
-  api, media, uploadFile, useJob,
+  api, media, uploadFile, useJob, useJobLogMirror,
   type Engine, type LibraryRunInfo, type LibraryRunDetail, type LibraryRunsResponse,
   type LibraryPeriod, type PromptFile, type SegPrompt, type Validation,
 } from "./api";
@@ -392,6 +392,13 @@ export default function App() {
   const [finalPreviewPath, setFinalPreviewPath] = useState<string | null>(null);
   const [cassPreviewPath, setCassPreviewPath] = useState<string | null>(null);
   const [upscalePreviewPath, setUpscalePreviewPath] = useState<string | null>(null);
+  // 出力ファイル名は固定(例: {name}_remixed.mp4)のため、同じ動画に対しCASS/Upscale/Preview
+  // を連続実行するとpath文字列自体は前回と変わらない。それでもキャッシュバスト(&v=)が
+  // 効くよう、完了ごとのタイムスタンプを別途持つ(2026-07-22実機報告: 再実行後も前回の
+  // 映像が残り自動再生もされないバグの修正)。
+  const [finalPreviewMt, setFinalPreviewMt] = useState<number | null>(null);
+  const [cassPreviewMt, setCassPreviewMt] = useState<number | null>(null);
+  const [upscalePreviewMt, setUpscalePreviewMt] = useState<number | null>(null);
 
   const [i2vEngine, setI2vEngine] = useState<"default" | "10E" | "refine">("default");
   const [acestepConfigured, setAcestepConfigured] = useState(false);
@@ -492,8 +499,11 @@ export default function App() {
         setDetail(d);
         setEditSegs(applyStagedEdit(segmentsFromDetail(d), staged));
         setFinalPreviewPath(null);
+        setFinalPreviewMt(null);
         setCassPreviewPath(null);
+        setCassPreviewMt(null);
         setUpscalePreviewPath(null);
+        setUpscalePreviewMt(null);
       })
       .catch((e) => appendLog(`[studio] Error loading run detail: ${e.message}`))
       .finally(() => setDetailLoading(false));
@@ -550,20 +560,20 @@ export default function App() {
    * 中央FinalタブへあらかじめFinal動画を出す(2026-07-17ユーザー指摘: 選ぶ手段がない)。 */
   const currentFinal = currentFinalOf(detail);
   const displayFinalPath = finalPreviewPath ?? currentFinal?.path ?? null;
-  const displayFinalMt = finalPreviewPath ? undefined : currentFinal?.mt;
+  const displayFinalMt = finalPreviewPath ? finalPreviewMt ?? undefined : currentFinal?.mt;
 
   /** CASS/Upscaleも中央上部の独立タブとして出す(2026-07-17ユーザー指摘: Finalの右パネル
    * サブタブではなくSegment/Finalと並ぶタブの方がよい)。完了直後はジョブ結果を優先表示、
    * 既存runを選んだ時はdetail(実ファイルスキャン)から最新のものを出す。 */
   const latestCass = detail?.cass.videos[0] ?? null;
   const displayCassPath = cassPreviewPath ?? latestCass?.path ?? null;
-  const displayCassMt = cassPreviewPath ? undefined : latestCass?.mt;
+  const displayCassMt = cassPreviewPath ? cassPreviewMt ?? undefined : latestCass?.mt;
   // FHDはfinal直接upscale(_final_FHD.mp4→detail.finals)とCASS後upscale(_remixed_FHD.mp4→
   // detail.cass.videos)の両方があり得る(13節)。finalOptions()が両方合成しisFHDも判定済みのため、
   // detail.finalsだけを見ていた旧実装ではCASS後upscaleを見落としUpscaleタブが出ないバグがあった。
   const latestUpscale = finalOptions(detail).find((f) => f.isFHD) ?? null;
   const displayUpscalePath = upscalePreviewPath ?? latestUpscale?.path ?? null;
-  const displayUpscaleMt = upscalePreviewPath ? undefined : latestUpscale?.mt;
+  const displayUpscaleMt = upscalePreviewPath ? upscalePreviewMt ?? undefined : latestUpscale?.mt;
 
   const selectRun = (run: LibraryRunInfo) => {
     setSelection({ kind: "run", engine: run.engine, runId: run.runId, segmentNums: [], view: "final" });
@@ -620,6 +630,7 @@ export default function App() {
       return next;
     });
     setFinalPreviewPath(null);
+    setFinalPreviewMt(null);
   };
 
   const reorderSegments = (fromIndex: number, toIndex: number) => {
@@ -632,6 +643,7 @@ export default function App() {
       return segs;
     });
     setFinalPreviewPath(null);
+    setFinalPreviewMt(null);
   };
 
   const commitTrimLocal = () => {
@@ -650,6 +662,7 @@ export default function App() {
     setTrimPreviewForNum(trimming.num);
     setTrimming(null);
     setFinalPreviewPath(null);
+    setFinalPreviewMt(null);
   };
 
   /** トリムの実プレビューは中央プレビューエリアで再生する(2026-07-17ユーザー指摘:
@@ -709,8 +722,11 @@ export default function App() {
       // 実行されない。前runのCASS/Upscale結果が残ったまま新runのタブに出てしまうバグの原因だった
       // (2026-07-18ユーザー報告)。ここで明示的にクリアする。
       setFinalPreviewPath(null);
+      setFinalPreviewMt(null);
       setCassPreviewPath(null);
+      setCassPreviewMt(null);
       setUpscalePreviewPath(null);
+      setUpscalePreviewMt(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobHook.state.runId, activeJob]);
@@ -749,6 +765,7 @@ export default function App() {
     try {
       const r = await api<{ out: string }>("/api/edit/preview", { json: { segments: editPayload() } });
       setFinalPreviewPath(r.out);
+      setFinalPreviewMt(Date.now());
       appendLog(`[studio] Preview edit — ${r.out}`);
     } catch (e) {
       appendLog(`[studio] Error previewing edit: ${(e as Error).message}`);
@@ -782,6 +799,7 @@ export default function App() {
       // には影響しない。sidecar(/api/edit/stage)側もcommitで削除しなくなったため、表示との
       // 整合を保つにはここでリセットしないのが正しい)。
       setFinalPreviewPath(null);
+      setFinalPreviewMt(null);
     } catch (e) {
       appendLog(`[studio] Error committing edit: ${(e as Error).message}`);
     } finally {
@@ -1150,8 +1168,8 @@ export default function App() {
               onPreview={previewFinal}
               onCommit={commitFinal}
               onLog={appendLog}
-              onCassResult={(path) => { setCassPreviewPath(path); setView("cass"); refreshDetail(); }}
-              onUpscaleResult={(path) => { setUpscalePreviewPath(path); setView("upscale"); refreshDetail(); }}
+              onCassResult={(path) => { setCassPreviewPath(path); setCassPreviewMt(Date.now()); setView("cass"); refreshDetail(); }}
+              onUpscaleResult={(path) => { setUpscalePreviewPath(path); setUpscalePreviewMt(Date.now()); setView("upscale"); refreshDetail(); }}
               activeView={selection.view}
               previewing={editPreviewing}
               committing={editCommitting}
@@ -1745,6 +1763,11 @@ function CassPanel({ options, onLog, onResult }: {
   const takes = bgmJob.state.takes ?? [];
   const notifiedJobRef = useRef<string | null>(null);
 
+  // サーバーは進捗をSSEへ流しているが、共有Logパネルへの配線が無く実行中に何も見えなかった
+  // (2026-07-22ユーザー報告)。activeJob用(App本体)と同じパターンで転記する。
+  useJobLogMirror(cassJob.log, jobId, onLog);
+  useJobLogMirror(bgmJob.log, bgmJobId, onLog);
+
   useEffect(() => {
     api<{ configured: boolean }>("/api/acestep-config").then((r) => setAcestepConfigured(r.configured)).catch(() => {});
     api<{ name: string; path: string }[]>("/api/bgm-files").then(setBgmFiles).catch(() => {});
@@ -1886,6 +1909,8 @@ function UpscalePanel({ options, onLog, onResult }: {
   const job = useJob(jobId);
   const videoPath = selected || options[0]?.path || "";
   const notifiedJobRef = useRef<string | null>(null);
+
+  useJobLogMirror(job.log, jobId, onLog);
 
   // 対象は既定でmtime最新(従来のlatestFinal相当)。runを切り替えたら選択をリセットする。
   useEffect(() => setSelected(""), [options.map((o) => o.path).join(",")]);
