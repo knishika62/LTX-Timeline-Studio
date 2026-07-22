@@ -2,6 +2,8 @@
 
 ## 更新情報
 
+`git pull`後は`npm run studio:build`でフロントエンドを再ビルドすること(サーバー側JS/Pythonの修正はサーバー再起動のみで反映される)。
+
 ### 2026-07-22
 - studioのブラウザタイトルから`(prototype)`表記を削除
 - Windows/Chromeでログパネルに水平スクロールバーが常時表示される不具合を修正
