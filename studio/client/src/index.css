@@ -363,4 +363,6 @@ button:disabled { opacity: 0.4; cursor: default; }
   margin: 0; padding: 8px 14px; height: 140px; overflow-y: auto;
   font-size: 11px; font-family: "SF Mono", ui-monospace, Menlo, monospace; color: var(--text-dim);
   background: #08080a; box-sizing: border-box;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
