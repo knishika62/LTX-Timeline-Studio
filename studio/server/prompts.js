@@ -71,10 +71,13 @@ export function writeSegmentPrompt(engine, runId, segNum, newPrompt, newKfPrompt
   const end = targetIdx + 1 < heads.length ? heads[targetIdx + 1].index : text.length;
   let block = text.slice(start, end);
 
-  const ltxM = /--- LTX prompt ---\n/.exec(block);
+  // \r?\n: WindowsではPythonのPath.write_text()が\nを\r\n(CRLF)に自動変換して
+  // prompts.txtを書き出すため(macOS/LinuxはLFのまま)、\n決め打ちだとWindows生成の
+  // ファイルでマッチに失敗し書き戻しがサイレントに失敗していた(2026-07-22実機報告)。
+  const ltxM = /--- LTX prompt ---\r?\n/.exec(block);
   if (!ltxM) return false;
   if (engine === "i2v" && newKfPrompt != null) {
-    const kfM = /--- Keyframe prompt ---\n/.exec(block);
+    const kfM = /--- Keyframe prompt ---\r?\n/.exec(block);
     if (kfM) {
       block =
         block.slice(0, kfM.index + kfM[0].length) +
