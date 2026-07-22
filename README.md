@@ -7,6 +7,7 @@
 ### 2026-07-23
 - CASS「BGM: File」一覧に検索(ファイル名部分一致、大文字小文字区別)と件数上限(50件超で警告表示)を追加。件数増加で一覧が破綻しないように
 - Libraryタブの左run一覧を整理: カードタイトルは日付(yyyymmdd)のみの表示に統一。他の編集ソフトへ持ち出して本格的な編集ができるよう、選択runの生成物一式(prompts.txt・keyframe・segment・final・CASS成果物)をzipでまとめてダウンロードするExport機能を追加(削除と同様、実行前に確認あり)
+- 上記Export機能のzip生成に伴い依存パッケージ(`archiver`)を追加。**この回のみ`npm run studio:build`だけでなく`npm install`も必要**
 
 ### 2026-07-22
 - studioのブラウザタイトルから`(prototype)`表記を削除
