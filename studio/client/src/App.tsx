@@ -355,6 +355,7 @@ export default function App() {
   const [runsTotal, setRunsTotal] = useState(0);
   const [runsTruncated, setRunsTruncated] = useState(false);
   const [confirmDeleteKey, setConfirmDeleteKey] = useState<string | null>(null);
+  const [confirmExportKey, setConfirmExportKey] = useState<string | null>(null);
   // --keep/--norefineはSegmentInspector側のローカルstateだと再マウントのたびにリセットされる。
   // 何度もretryを繰り返す運用のため、Appへ持ち上げて維持する(2026-07-17ユーザー指摘)。
   const [retryKeep, setRetryKeep] = useState(false);
@@ -459,6 +460,14 @@ export default function App() {
     } catch (e) {
       appendLog(`[studio] Error deleting run: ${(e as Error).message}`);
     }
+  };
+
+  const exportRun = (run: LibraryRunInfo) => {
+    const a = document.createElement("a");
+    a.href = `/api/library/runs/${run.engine}/${run.runId}/export`;
+    a.click();
+    setConfirmExportKey(null);
+    appendLog(`[studio] Export — ${run.engine}/${run.runId}`);
   };
 
   /** 生成中のrunはまだ /api/library/runs の結果に含まれない(完了時にrefreshRunsするまで)。
@@ -853,14 +862,16 @@ export default function App() {
                 <div className="pane-browser-section-label">{groupKey}</div>
                 {groupRuns.map((run) => {
                   const rowKey = `${run.engine}-${run.runId}`;
-                  const confirming = confirmDeleteKey === rowKey;
+                  const confirmingDelete = confirmDeleteKey === rowKey;
+                  const confirmingExport = confirmExportKey === rowKey;
+                  const confirming = confirmingDelete || confirmingExport;
                   return (
                     <div
                       key={rowKey}
                       className={`run-card${selection.kind === "run" && selection.runId === run.runId ? " active" : ""}`}
                       onClick={() => !confirming && selectRun(run)}
                     >
-                      {confirming ? (
+                      {confirmingDelete ? (
                         <div className="run-card-confirm" onClick={(e) => e.stopPropagation()}>
                           <span>Delete run {run.runId}?</span>
                           <div className="row">
@@ -868,6 +879,16 @@ export default function App() {
                               <Icon name="trash" size={12} /> Delete
                             </button>
                             <button className="ghost" onClick={() => setConfirmDeleteKey(null)}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : confirmingExport ? (
+                        <div className="run-card-confirm" onClick={(e) => e.stopPropagation()}>
+                          <span>Export run {run.runId}?</span>
+                          <div className="row">
+                            <button className="primary" onClick={() => exportRun(run)}>
+                              <Icon name="download" size={12} /> Export
+                            </button>
+                            <button className="ghost" onClick={() => setConfirmExportKey(null)}>Cancel</button>
                           </div>
                         </div>
                       ) : (
@@ -878,13 +899,19 @@ export default function App() {
                           <div className="run-card-body">
                             <div className="run-card-top">
                               <span className={`run-card-engine ${run.engine}`}>{run.engine}</span>
-                              <span className="run-card-id">{run.runId}</span>
+                              <span className="run-card-id">{run.runId.slice(0, 8)}</span>
                             </div>
                             <div className="run-card-meta">
                               <span>{new Date(run.mt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span>
                               {activeJob?.runId === run.runId && <span className="run-card-status generating">generating…</span>}
                             </div>
                           </div>
+                          <button
+                            className="icon run-card-export" title="Export run (zip)"
+                            onClick={(e) => { e.stopPropagation(); setConfirmExportKey(rowKey); }}
+                          >
+                            <Icon name="download" size={13} />
+                          </button>
                           <button
                             className="icon run-card-delete" title="Delete run"
                             onClick={(e) => { e.stopPropagation(); setConfirmDeleteKey(rowKey); }}

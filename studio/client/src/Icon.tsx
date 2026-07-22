@@ -5,7 +5,7 @@ import type { SVGProps } from "react";
 export type IconName =
   | "search" | "scissors" | "trash" | "undo" | "refresh" | "upload" | "pencil"
   | "music" | "play" | "save" | "close" | "chevronLeft" | "chevronRight" | "stop" | "copy"
-  | "plus" | "film" | "layers" | "check";
+  | "plus" | "film" | "layers" | "check" | "download";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   search: <><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></>,
@@ -27,6 +27,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
   film: <><rect x="2" y="3" width="20" height="18" rx="2" /><line x1="7" y1="3" x2="7" y2="21" /><line x1="17" y1="3" x2="17" y2="21" /><line x1="2" y1="9" x2="7" y2="9" /><line x1="2" y1="15" x2="7" y2="15" /><line x1="17" y1="9" x2="22" y2="9" /><line x1="17" y1="15" x2="22" y2="15" /></>,
   layers: <><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></>,
   check: <polyline points="20 6 9 17 4 12" />,
+  download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="3" x2="12" y2="15" /></>,
 };
 
 export function Icon({ name, size = 16, ...rest }: { name: IconName; size?: number } & SVGProps<SVGSVGElement>) {

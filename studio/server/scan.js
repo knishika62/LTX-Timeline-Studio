@@ -362,11 +362,13 @@ export function libraryRunDetail(engine, runId) {
   };
 }
 
-/** 指定runの生成物一式を削除(Libraryタブの削除機能)。libraryRunDetailが返すのと同じ
- * 4カテゴリ(keyframes/segments/finals/cass)+prompts.txt本体を対象にする——「右ペインで
- * 見えているもの全部」が消える、という分かりやすい対応関係にする。元プロンプトファイル
- * (prompt/配下)は対象外(他runでも再利用され得る、ユーザーが書いた入力のため)。 */
-export function deleteLibraryRun(engine, runId) {
+/** 指定runの生成物一式(libraryRunDetailが返すのと同じ4カテゴリ:
+ * keyframes/segments/finals/cass + prompts.txt本体)を集める。deleteLibraryRun・
+ * Export機能(zip一括DL)の両方から呼ばれる共通ロジック(30節の共通化方針を踏襲)。
+ * 元プロンプトファイル(prompt/配下)は対象外(他runでも再利用され得る、ユーザーが
+ * 書いた入力のため)。stemsは削除時と異なりディレクトリ単位ではなく個別ファイルで返す
+ * (scanCassOutputsが既にspeech/sfx/music.wavの実パスまで返しているため)。 */
+export function collectRunFiles(engine, runId) {
   const prefix = PREFIXES[engine];
   const cass = scanCassOutputs(prefix, runId);
   const files = [
@@ -375,8 +377,21 @@ export function deleteLibraryRun(engine, runId) {
     ...scanAllSegmentVideos(prefix, runId).map((s) => s.path),
     ...scanAllFinals(prefix, runId).map((f) => f.path),
     ...cass.videos.map((v) => v.path),
+    ...cass.stems.map((s) => s.path),
   ];
-  const dirs = [...new Set(cass.stems.map((s) => path.dirname(s.path)))];
+  const stemDirs = [...new Set(cass.stems.map((s) => path.dirname(s.path)))];
+  return { files, stemDirs };
+}
+
+/** 指定runの生成物一式を削除(Libraryタブの削除機能)。「右ペインで見えているもの全部」が
+ * 消える、という分かりやすい対応関係にする。stemsはディレクトリごと削除する
+ * (collectRunFilesが個別ファイルとして返す速度優先の一覧とは削除粒度が異なるため、
+ * filesからstemファイル自体は除いてstemDirsのrmSyncに任せる)。 */
+export function deleteLibraryRun(engine, runId) {
+  const { files: allFiles, stemDirs } = collectRunFiles(engine, runId);
+  const stemDirSet = new Set(stemDirs);
+  const files = allFiles.filter((f) => !stemDirSet.has(path.dirname(f)));
+  const dirs = stemDirs;
 
   let deletedFiles = 0;
   for (const f of files) {

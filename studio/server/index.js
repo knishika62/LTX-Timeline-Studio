@@ -6,12 +6,13 @@ import fs from "node:fs";
 import path from "node:path";
 import express from "express";
 import multer from "multer";
+import { ZipArchive } from "archiver";
 
 import { BASE_DIR, UPLOADS_DIR, GENERATED_DIR, PROMPT_DIR, PREFIXES, readEnv } from "./config.js";
 import {
   listRuns, runSnapshot, listGeneratedVideos, listBgmFiles,
   listLibraryRuns, libraryRunDetail, presetToSinceMs, deleteLibraryRun,
-  scanSegmentVideos,
+  collectRunFiles, scanSegmentVideos,
 } from "./scan.js";
 import {
   listPromptFiles, readPromptFile, savePromptFile, validatePrompt,
@@ -124,6 +125,20 @@ app.delete("/api/library/runs/:engine/:runId", (req, res) => {
     if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
   }
   res.json(result);
+});
+app.get("/api/library/runs/:engine/:runId/export", (req, res) => {
+  const { engine, runId } = req.params;
+  if (!PREFIXES[engine]) return res.status(400).json({ error: `unknown engine: ${engine}` });
+  const prefix = PREFIXES[engine];
+  const { files } = collectRunFiles(engine, runId);
+  const existing = files.filter((f) => fs.existsSync(f));
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename="${prefix}_${runId}_export.zip"`);
+  const archive = new ZipArchive();
+  archive.on("error", (err) => { if (!res.headersSent) res.status(500); res.end(); console.error("[export] archiver error:", err); });
+  archive.pipe(res);
+  for (const f of existing) archive.file(f, { name: path.basename(f) });
+  archive.finalize();
 });
 app.get("/api/duration", wrap(async (req, res) => {
   res.json({ duration: await ffprobeDuration(String(req.query.p)) });

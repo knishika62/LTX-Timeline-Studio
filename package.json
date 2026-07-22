@@ -11,6 +11,7 @@
     "studio:build": "npm --prefix studio/client run build"
   },
   "dependencies": {
+    "archiver": "^8.0.0",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1",
