@@ -163,7 +163,7 @@ pip install -U torch==<別バージョン>
 
 ## ComfyUIの設定
 
-[ComfyUI](https://github.com/comfyanonymous/ComfyUI)本体を別途セットアップし、サーバーを起動しておくこと。
+[ComfyUI](https://github.com/comfyanonymous/ComfyUI)本体を別途セットアップし、サーバーを起動しておくこと。設定でDev ModeをONにする(こうしないとAPIが使えない)。
 `workflows/`のワークフローJSONが要求するカスタムノード(LoRA Stack等)が未インストールの場合、
 ComfyUI Manager の「Install Missing Custom Nodes」でワークフローを開けば自動検出・導入できる。
 起動後、`.env`の`COMFYUI_IMAGE_URL`(キーフレーム生成用)・`COMFYUI_VIDEO_URL`(動画生成・アップスケール用)をそのサーバーに合わせること。
@@ -189,6 +189,7 @@ ComfyUI Manager の「Install Missing Custom Nodes」でワークフローを開
 - LoRA: [`ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors`](https://huggingface.co/Comfy-Org/ltx-2.3/blob/main/split_files/loras/ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors)
 - LoRA: [`LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors`](https://huggingface.co/Kijai/LTX2.3_comfy/blob/main/loras/LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors)
 - Latent Upscale Model: [`ltx-2.3-spatial-upscaler-x2-1.1.safetensors`](https://huggingface.co/Lightricks/LTX-2.3/blob/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors)
+- Text Encoder: [`gemma_3_12B_it_fp4_mixed.safetensors`](https://huggingface.co/Comfy-Org/ltx-2/blob/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors)
 
 **`image.json`(i2vキーフレーム生成)**
 - UNET: [`krea2_turbo_int8_convrot.safetensors`](https://huggingface.co/Comfy-Org/Krea-2/blob/main/diffusion_models/krea2_turbo_int8_convrot.safetensors)
