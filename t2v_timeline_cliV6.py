@@ -32,7 +32,7 @@ sys.stderr.reconfigure(encoding="utf-8")
 from openai import AsyncOpenAI
 
 from modules import pipeline_config as cfg
-from modules.comfyui_client import generate_t2v_video
+from modules.comfyui_client import generate_t2v_video, generate_video_h3
 from modules.timeline_common import (
     _fmt_elapsed,
     _fmt_duration,
@@ -61,6 +61,7 @@ from modules.timeline_common import (
     _write_scene_description,
     _plan_creative_intent_json, _plan_shot_directions_json, _audit_shot_variety_json,
     _resolve_state_continuity_json, _flatten_state,
+    _format_h3_prompt,
 )
 
 
@@ -163,7 +164,7 @@ If the subject turns their HEAD, that is subject movement, not camera movement.
 → medium close-up minimum so expression and gesture are clear.
 
 ### ANIMAL IN FRAME
-→ Always include the animal's characteristic sound in the audio description (cat meows/purrs, dog barks, birds chirp, etc.), regardless of whether LTX-2.3 can reproduce it faithfully.
+→ Always include the animal's characteristic sound in the audio description (cat meows/purrs, dog barks, birds chirp, etc.), regardless of whether LTX-2.5 can reproduce it faithfully.
 
 ## ANGLE VARIETY RULE
 - Check the previous 2 segments. NEVER assign the same camera side or angle as either of them.
@@ -470,7 +471,7 @@ def _detect_violations(ltx_prompt: str, direction: str, orientation: str, reserv
 
 
 _PROMPT_FIXER_SYSTEM = """\
-You are an LTX-2.3 prompt fixer. You receive a prompt and a list of specific violations.
+You are an LTX-2.5 prompt fixer. You receive a prompt and a list of specific violations.
 Rewrite the prompt so that every violation is fixed. Change ONLY what the violations require; preserve everything else — wording, style keywords, character sentence, audio description, aspect-ratio phrase, one flowing paragraph, ~140-180 words.
 
 VIOLATED RULES TO FIX:
@@ -483,7 +484,7 @@ _SCENE_WRITER_SYSTEM = """\
 You are a scene director describing exactly what is visible in a single camera shot.
 Your job: translate the camera direction and shot action into precise spatial language — like describing what you see on a monitor to a VFX supervisor.
 
-Do NOT use LTX-2.3 terminology or cinematic jargon yet. Just describe the spatial reality.
+Do NOT use LTX-2.5 terminology or cinematic jargon yet. Just describe the spatial reality.
 
 ⚠️ STATE IS AUTHORITATIVE: if the "Creative intent" block below includes a STATE line (time-of-day/lighting, weather, current outfit), that is the confirmed ground truth for THIS shot — commit to it fully for the lighting, weather, and clothing you describe, even when it differs from the baseline in "Character & Setting" (e.g. STATE says night while the reference's default scene is daytime). Never hedge between two possibilities ("suggesting early morning or late night") — state the one lighting condition plainly. This applies even when the shot action itself doesn't mention it.
 
@@ -536,8 +537,8 @@ Write 150–200 words in plain English. No prompt engineering language.\
 """
 
 _LTX_FORMATTER_SYSTEM_BASE = """\
-You are an LTX-2.3 T2V prompt engineer.
-Input: a spatial scene description (what a director sees on a monitor). Your job: reformat it as an LTX-2.3 optimized prompt.
+You are an LTX-2.5 T2V prompt engineer.
+Input: a spatial scene description (what a director sees on a monitor). Your job: reformat it as an LTX-2.5 optimized prompt.
 Do NOT reinterpret what happens — follow the spatial description exactly.
 
 OUTPUT: One flowing paragraph and NOTHING ELSE — never append or echo the character/style reference block, the location list, or any leftover input text after the paragraph. Present tense. Active verbs. In this structure order:
@@ -675,7 +676,7 @@ def _enforce_character_line(ltx_prompt: str, character_line: str) -> str:
 
 
 async def _format_to_ltx_prompt(scene_desc: str, global_desc: str, ambience: str, duration: int, orientation: str, direction: str = "", character_line: str = "", action: str = "", reserved_props: list[str] | None = None, state: str = "") -> str:
-    """Pass 3: シーン記述をLTX-2.3最適化プロンプトに変換する。
+    """Pass 3: シーン記述をLTX-2.5最適化プロンプトに変換する。
     state: Pass0が決定した「このセグメント時点のSTATE」(時間帯/天気/服装)。参照文(global_desc)の
     既定値と矛盾する場合、こちらを優先させる(i2v_timeline_cliV2.pyでキーフレーム本文がglobal_descの
     既定の時間帯・照明をそのまま書いてしまう事故が実テストで発覚し、同じ修正を移植)。"""
@@ -887,7 +888,7 @@ async def _run_direct(args: argparse.Namespace) -> None:
 
     seg_path = _seg_video_path(ts, 1, "direct", "t2v6")
     print(f"\n[t2v-tl6] 動画生成中...")
-    raw_path = await generate_t2v_video(main_prompt, width, height, duration)
+    raw_path = await _generate_t2v_video_dispatch(main_prompt, width, height, duration)
     raw_path.rename(seg_path)
     print(f"[t2v-tl6] 保存: {seg_path.name}")
 
@@ -997,7 +998,7 @@ async def _run_retry(args: argparse.Namespace) -> None:
     async def _retry_one(n: int) -> None:
         seg = seg_by_num[n]
         print(f"[t2v-tl6] [{n}/{len(segments)}] {seg['duration']}s 再生成中...")
-        raw_path = await generate_t2v_video(seg["prompt"], width, height, seg["duration"])
+        raw_path = await _generate_t2v_video_dispatch(seg["prompt"], width, height, seg["duration"])
         raw_path.rename(dests[n])
         print(f"[t2v-tl6] 保存: {dests[n].name}")
 
@@ -1017,6 +1018,16 @@ async def _run_retry(args: argparse.Namespace) -> None:
     if _concat_segments(seg_paths, final, "[t2v-tl6]"):
         print(f"\n[t2v-tl6] 完了! セグメント {targets} を再生成 → final 再連結")
         print(f"[t2v-tl6] 最終動画: {final}")
+
+
+async def _generate_t2v_video_dispatch(prompt: str, width: int, height: int, duration_s: float) -> Path:
+    """t2v動画生成の実行エンジン切替。MiniMaxH3_T2Vが設定されていればgenerate_video_h3()へ、
+    未設定なら従来通りgenerate_t2v_video()(T2V_VIDEO_ENGINEのファイル)を呼ぶ。i2v側の
+    _generate_i2v_video()と同じ「新エンジンは最優先で早期return、既存動作は無改修」という形に
+    揃えた(2026-08-03、t2vにはこれまでエンジン切替の仕組み自体が無かったための新設)。"""
+    if cfg.MiniMaxH3_T2V:
+        return await generate_video_h3(prompt, cfg.MiniMaxH3_T2V, width, height, duration_s)
+    return await generate_t2v_video(prompt, width, height, duration_s)
 
 
 async def _process_segment_phase1(
@@ -1057,11 +1068,16 @@ async def _process_segment_phase1(
     if reject:
         print(f"[t2v-tl6]   [{i}/{total}] Pass2 未解消(最大{_LINT_MAX_ATTEMPTS}回試行後): {reject}")
     print(f"[t2v-tl6]   [{i}/{total}] scene:\n{scene_desc}")
-    print(f"[t2v-tl6]   [{i}/{total}] Pass3: LTX書式化中(LLM)...")
     current_state = state
+    print(f"[t2v-tl6]   [{i}/{total}] Pass3: LTX書式化中(LLM)...")
     async with llm_sem:
         seg_prompt = await _format_to_ltx_prompt(scene_desc, global_desc, ambience, seg["duration"], orientation, direction, character_line, seg["action"], _reserved_props_for(segments, i - 1), current_state)
     print(f"[t2v-tl6]   [{i}/{total}] prompt:\n{seg_prompt}")
+    if cfg.MiniMaxH3_T2V:
+        # H3はLTXと同じPass3(LLM+Pass4 lint+enforce_*一式)を経た本文をそのままMiniMaxの
+        # 構造化フォーマットへ組み替えるだけ(2026-08-03、独自の簡易パイプラインを作らない方針)
+        seg_prompt = _format_h3_prompt(seg_prompt, ambience, seg["action"])
+        print(f"[t2v-tl6]   [{i}/{total}] H3 prompt (Pass3出力をMiniMax構造化形式へ変換):\n{seg_prompt}")
 
     prompt_block = (
         f"[{i}/{total}] {seg['label']} ({seg['duration']}s)\n"
@@ -1078,7 +1094,7 @@ async def _process_segment_phase2(item: dict, total: int, width: int, height: in
     無制限に並列実行する(2026-07-10、テキスト確定フェーズから分離)。"""
     seg, i = item["seg"], item["num"]
     print(f"[t2v-tl6]   [{i}/{total}] 動画生成中...")
-    raw_path = await generate_t2v_video(item["prompt"], width, height, seg["duration"])
+    raw_path = await _generate_t2v_video_dispatch(item["prompt"], width, height, seg["duration"])
     named = _seg_video_path(ts, i, seg["label"], "t2v6")
     raw_path.rename(named)
     print(f"[t2v-tl6]   [{i}/{total}] 保存: {named.name}")

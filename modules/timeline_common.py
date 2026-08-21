@@ -626,7 +626,7 @@ _ACTION_QUOTE_RE = re.compile(r'"[^"]+"')
 
 def _enforce_dialogue_attribution(ltx_prompt: str, action: str = "") -> str:
     """引用符のセリフに話者動詞(says/whispers等)が前後どちらにも無ければ「She says」を補う。
-    浮いた引用符だけのセリフ("...")は、LTX-2.3が歌っているような節回しで発話する事故に
+    浮いた引用符だけのセリフ("...")は、LTX-2.5が歌っているような節回しで発話する事故に
     つながるため(2026-07-12、実データ: ビーチシーンの「きもちいい〜」が話者動詞の無い
     浮いた引用符のまま、歌うように生成された)。actionにsing/hum等が明示されている場合は
     歌わせる意図なので何もしない。
@@ -672,6 +672,46 @@ def _enforce_dialogue_attribution(ltx_prompt: str, action: str = "") -> str:
                 fixed += "."
             fixed = f"{fixed} She says {q}".strip()
     return fixed
+
+
+def _format_h3_prompt(ltx_prompt: str, ambience: str, action: str = "") -> str:
+    """MiniMax-H3公式prompt-writing-guideの構造化テキスト形式(3フィールド:
+    integrated_multimodal_description / overall_soundscape / non_diegetic_music +
+    <d>[Language] text</d> セリフタグ + [Shot N]見出し)を1本の文字列に組み立てる
+    (workflows/minimax_h3_*.jsonのnode 105:104 `prompt`は単一のフラットな文字列
+    フィールドしか持たないため)。1セグメント=1生成呼び出しの設計(_process_segment_phase2/
+    _generate_i2v_videoの呼び出し単位)のため、Shot見出しは常に[Shot 1]固定でよい。
+
+    ltx_prompt: **既にPass3/Pass3b(_format_to_ltx_prompt/_format_motion_prompt)のLLM+Pass4
+    lint+enforce_*一式(garments/state/direction/reserved_props/realism等、C1〜C20)を通過した
+    最終本文**を渡すこと。この関数自体はLLM呼び出しをせず、既に確定済みの本文をMiniMaxの
+    構造化フォーマットへ組み替えるだけ(2026-08-03、H3をLTXと同レベルで動かすため、独自の
+    簡易版パイプラインを作らずPass3/Pass3bの結果をそのまま使う方針に変更)。
+    既存のPass3/Pass3b本体は一切変更しない——通常のLTX/i2v経路は無改修のまま。
+
+    ltx_prompt中の"She says \"...\""のような話者帰属(_enforce_dialogue_attributionが
+    埋め込んだもの)は_DIALOGUE_UNIT_REで除去してから、_ACTION_QUOTE_RE(同じ抽出元)で
+    actionから抜いた逐語セリフを<d>タグとして別途付け直す(本文と<d>タグでセリフが二重に
+    出るのを防ぐため、2026-08-03)。
+
+    話者は単一(暗黙のS1相当)のみ対応、複数話者ロースターは現状スコープ外(既存コードベースにも
+    キャラクターIDの概念自体が無いため)。言語タグは非ASCII文字の有無による簡易判定
+    (retryでセリフを日本語に書き換えるケースがあるため、English固定にはしない)。
+    """
+    visual = _DIALOGUE_UNIT_RE.sub("", ltx_prompt)
+    visual = re.sub(r"[ \t]{2,}", " ", visual).strip()
+    lines = [
+        "[Shot 1]",
+        f"integrated_multimodal_description: {visual}",
+        f"overall_soundscape: {ambience or 'N/A'}",
+        "non_diegetic_music: N/A",
+    ]
+    text = "\n".join(lines)
+    for quote in _ACTION_QUOTE_RE.findall(action):
+        spoken = quote.strip('"')
+        lang = "Japanese" if any(ord(ch) > 127 for ch in spoken) else "English"
+        text += f'\n<d>[{lang}] "{spoken}"</d>'
+    return text
 
 
 # ============================================================

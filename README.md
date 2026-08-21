@@ -4,6 +4,13 @@
 
 `git pull`後は`npm run studio:build`でフロントエンドを再ビルドすること(サーバー側JS/Pythonの修正はサーバー再起動のみで反映される)。
 
+### 2026-08-21
+- 動画生成モデルをLTX-2.3からLTX-2.5へ移行(`video.json`のみ、性能向上のため2.3は廃止)。必要な重み(モデル)一覧を更新
+
+### 2026-08-03
+- MiniMax H3を新エンジンとして暫定対応(`MiniMaxH3_T2V`/`MiniMaxH3_I2V`、`.env`参照)
+- i2vでキーフレームを再生成するretry実行時、動画生成が終わるまでセグメントサムネイル・キーフレームプレビューが古い画像のまま表示される不具合を修正
+
 ### 2026-07-23
 - CASS「BGM: File」一覧に検索(ファイル名部分一致、大文字小文字区別)と件数上限(50件超で警告表示)を追加。件数増加で一覧が破綻しないように
 - Libraryタブの左run一覧を整理: カードタイトルは日付(yyyymmdd)のみの表示に統一。他の編集ソフトへ持ち出して本格的な編集ができるよう、選択runの生成物一式(prompts.txt・keyframe・segment・final・CASS成果物)をzipでまとめてダウンロードするExport機能を追加(削除と同様、実行前に確認あり)
@@ -19,11 +26,11 @@
 ## 概要
 
 Seedance等で公開されているタイムライン形式のプロンプト(`00:00–00:03 She waves...`のように秒区切りで
-動作を並べる書き方)は、そのままローカルのLTX-2.3に渡しても秒指定が読めず、1本のクリップに複数の時間・
+動作を並べる書き方)は、そのままローカルのLTX-2.5に渡しても秒指定が読めず、1本のクリップに複数の時間・
 場所が同時に詰め込まれて破綻するケースがある。
 
 **このプロジェクトは、タイムラインをセグメント単位に分割し、各区間を
-LLMでLTX-2.3が理解できる単発プロンプトに変換して1シーンずつ生成し、ffmpegで連結する**ことでこの問題を解く。
+LLMでLTX-2.5が理解できる単発プロンプトに変換して1シーンずつ生成し、ffmpegで連結する**ことでこの問題を解く。
 
 本体は `t2v_timeline_cliV6.py` / `i2v_timeline_cliV6.py`(タイムライン形式の動画生成CLI)。t2v(テキストのみ
 直接生成)/i2v(キーフレーム画像経由)の2エンジンに対応。ターミナルからCLI単体で直接使う(後述)ことも、
@@ -43,7 +50,7 @@ Node.js(Express+SSE)バックエンド + Vite/React/TSフロントエンド。
 ## 必要なもの
 
 1. LM Studio等、OpenAI API互換のLLMエンドポイント(リモートでも可)
-2. ComfyUI(リモートでも可。LTX-2.3とKrea2が生成可能なGPU搭載のこと。フルHDへのUpscaleはRTX Video Super Resolutionを使う関係上、NVIDIA GPU必須)
+2. ComfyUI(リモートでも可。LTX-2.5とKrea2が生成可能なGPU搭載のこと。フルHDへのUpscaleはRTX Video Super Resolutionを使う関係上、NVIDIA GPU必須)
 3. GPU(CASSの音源分離で使用。ローカル必須)
 4. Python
 5. ffmpeg / ffprobe
@@ -184,12 +191,13 @@ ComfyUI Manager の「Install Missing Custom Nodes」でワークフローを開
 
 `workflows/`のベース3ワークフロー(`video.json`/`image.json`/`rtx_video_upscale.json`)が読み込む重み。ComfyUI側の該当フォルダ(checkpoints/loras/unet/clip/vae等)に事前に配置しておくこと。
 
-**`video.json`(t2v/i2v動画生成)**
-- Checkpoint: [`ltx-2.3-22b-dev-fp8.safetensors`](https://huggingface.co/Lightricks/LTX-2.3-fp8/blob/main/ltx-2.3-22b-dev-fp8.safetensors)
-- LoRA: [`ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors`](https://huggingface.co/Comfy-Org/ltx-2.3/blob/main/split_files/loras/ltx_2.3_22b_distilled_1.1_lora_dynamic_fro09_avg_rank_111_bf16.safetensors)
-- LoRA: [`LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors`](https://huggingface.co/Kijai/LTX2.3_comfy/blob/main/loras/LTX-2.3-OmniNFT-RL-Lora_bf16.safetensors)
-- Latent Upscale Model: [`ltx-2.3-spatial-upscaler-x2-1.1.safetensors`](https://huggingface.co/Lightricks/LTX-2.3/blob/main/ltx-2.3-spatial-upscaler-x2-1.1.safetensors)
-- Text Encoder: [`gemma_3_12B_it_fp4_mixed.safetensors`](https://huggingface.co/Comfy-Org/ltx-2/blob/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors)
+**`video.json`(t2v/i2v動画生成、LTX-2.5)**
+- Diffusion Model(UNET): [`ltx-2.5-22b-dev-transformer-comfy-int8-convrot.safetensors`](https://huggingface.co/Lightricks/LTX-2.5/blob/main/diffusion_models/ltx-2.5-22b-dev-transformer-comfy-int8-convrot.safetensors)
+- VAE(Video): [`ltx-2.5-video-vae-conv-bf16.safetensors`](https://huggingface.co/Lightricks/LTX-2.5/blob/main/vae/ltx-2.5-video-vae-conv-bf16.safetensors)
+- VAE(Audio): [`ltx-2.5-audio-vae-bf16.safetensors`](https://huggingface.co/Lightricks/LTX-2.5/blob/main/vae/ltx-2.5-audio-vae-bf16.safetensors)
+- Text Encoder(CLIP): [`gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors`](https://huggingface.co/Lightricks/LTX-2.5/blob/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors)
+- Latent Upscale Model: [`ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors`](https://huggingface.co/Lightricks/LTX-2.5/blob/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors)
+- LoRA: [`ltx-2.5-22b-distilled-lora-450-bf16.safetensors`](https://huggingface.co/Lightricks/LTX-2.5/blob/main/loras/ltx-2.5-22b-distilled-lora-450-bf16.safetensors)
 
 **`image.json`(i2vキーフレーム生成)**
 - UNET: [`krea2_turbo_int8_convrot.safetensors`](https://huggingface.co/Comfy-Org/Krea-2/blob/main/diffusion_models/krea2_turbo_int8_convrot.safetensors)
@@ -205,6 +213,7 @@ ComfyUI Manager の「Install Missing Custom Nodes」でワークフローを開
 
 - `video.json`・`image.json`共通: [rgthree-comfy](https://github.com/rgthree/rgthree-comfy)
 - `rtx_video_upscale.json`: [Nvidia_RTX_Nodes_ComfyUI](https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI)
+- `minimax_h3_t2v.json`・`minimax_h3_i2v.json`: [ComfyUI-SolAttn_triton](https://github.com/kijai/ComfyUI-SolAttn_triton)(`Patch Sage Attention KJ`・`Patch Sol-Attn`、RTX 5090等Blackwell世代GPU向け)、[ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes)(`EasyCache`、GPU非依存で汎用的に使える)。SolAttn非対応環境でエラーになる場合は、両WF内の`Patch Sage Attention KJ`・`Patch Sol-Attn`ノードを外し`Load Diffusion Model`を直接`EasyCache`へ繋ぎ直せばよい
 
 ### .env 設定(ワークフロー関連)
 
@@ -217,6 +226,7 @@ ComfyUI Manager の「Install Missing Custom Nodes」でワークフローを開
 | `FADE_OUT_ENABLED` | 最終連結動画の末尾フェードアウト(映像・音声とも1秒)。デフォルト`true` |
 | `I2V_VIDEO_ENGINE` | i2vの動画生成に使うComfyUIワークフローJSON(`workflows/`配下)。デフォルト`default`(`video.json`と同じI2Vモード)。`.json`ファイル名を指定するとそのファイルをそのまま使う(`video.json`と同じノードID体系を持つことが必須、指定JSONが無い/ノード構成が異なる場合のエラーは自己責任) |
 | `T2V_VIDEO_ENGINE` | t2vの動画生成に使うComfyUIワークフローJSON(`workflows/`配下)。デフォルト`video.json`。指定JSONが無い/ノード構成が異なる場合のエラーは自己責任(バリデーション無し) |
+| `MiniMaxH3_T2V` / `MiniMaxH3_I2V` | 設定時はMiniMax-H3専用ワークフロー(`workflows/minimax_h3_t2v.json`/`minimax_h3_i2v.json`)を使い、`I2V_VIDEO_ENGINE`/`T2V_VIDEO_ENGINE`より優先。解像度はワークフロー内のResolutionSelectorを無視し864x480/480x864に固定(向きだけstudio UIの指定を反映、ピクセル数は無視、RTX Upscaleで補う運用) |
 | `IMAGE_PROMPT_PREFIX` | 画像プロンプト冒頭に付加する品質向上prefix |
 
 ## ブラウザUI(studio)
@@ -264,8 +274,8 @@ npm --prefix studio/client run dev
 
 ## V6タイムラインCLIの使い方
 
-- **t2v**(`t2v_timeline_cliV6.py`): キーフレームを経由せず、LTX-2.3のT2Vモードにテキストプロンプトだけで直接動画生成。出力prefixは`t2v6_`
-- **i2v**(`i2v_timeline_cliV6.py`): 各セグメントの1stフレームをZ-Image/Krea2(`image.json`、`.env`の`KEYFRAME_WORKFLOW_JSON`で差し替え可)で先に生成し、LTX-2.3のI2Vで動かす方式。出力prefixは`i2v6_`(キーフレームは`..._seg{NN}_kf.png`として残る)
+- **t2v**(`t2v_timeline_cliV6.py`): キーフレームを経由せず、LTX-2.5のT2Vモードにテキストプロンプトだけで直接動画生成。出力prefixは`t2v6_`
+- **i2v**(`i2v_timeline_cliV6.py`): 各セグメントの1stフレームをZ-Image/Krea2(`image.json`、`.env`の`KEYFRAME_WORKFLOW_JSON`で差し替え可)で先に生成し、LTX-2.5のI2Vで動かす方式。出力prefixは`i2v6_`(キーフレームは`..._seg{NN}_kf.png`として残る)
 
 ```bash
 python t2v_timeline_cliV6.py --h --f prompt/example.txt          # 横 1280×720

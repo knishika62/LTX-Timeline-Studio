@@ -197,29 +197,29 @@ async def upscale_video(video_server_filename: str) -> Path:
 
 async def generate_t2v_video(prompt: str, width: int = 720, height: int = 1280, duration_s: int = 5,
                              keyframe_server_filename: str | None = None, workflow_json: str | None = None) -> Path:
-    """テキストから動画を生成してローカルに保存したPathを返す(T2V、2026版LTX-2.3ワークフロー)。
+    """テキストから動画を生成してローカルに保存したPathを返す(T2V、LTX-2.5ワークフロー)。
 
-    keyframe_server_filename: 指定時はI2Vモードに切り替え(node 356=False)、node 269(LoadImage)に
+    keyframe_server_filename: 指定時はI2Vモードに切り替え(node 414=False)、node 395(LoadImage)に
     1stフレーム画像を設定する(T2V/I2Vは同一ワークフローでboolスイッチのみの違い)。未指定なら従来通りT2V。
 
     ワークフローJSONは.envのT2V_VIDEO_ENGINEで差し替え可能(デフォルトvideo.json)。i2v側は
-    workflow_json引数で.envのI2V_VIDEO_ENGINEを明示的に渡せる(値が"default"/"10e"/"refine"以外の
-    場合のみ——それらは_generate_i2v_video()が専用エンジンへ振り分ける)。
-    **指定するJSONはvideo.jsonと同じノードID体系(373/366/353/355/331/356/269等)を持つことが必須**。
+    workflow_json引数で.envのI2V_VIDEO_ENGINEを明示的に渡せる(値が"default"以外の場合のみ——
+    それ以外は_generate_i2v_video()が振り分ける)。
+    **指定するJSONはvideo.jsonと同じノードID体系(410/417/419/413/437/414/395等)を持つことが必須**。
     存在しない、またはノード構成が異なるJSONを指定した場合のエラーはユーザー側の責任
     (ここではバリデーションしない、KEYFRAME_WORKFLOW_JSONと同じ方針、2026-07-16)。
     """
     workflow = _load_workflow(workflow_json or cfg.T2V_VIDEO_ENGINE)
 
-    workflow["373"]["inputs"]["value"] = prompt      # input1: テキストプロンプト
-    workflow["366"]["inputs"]["value"] = width        # Width(px)
-    workflow["353"]["inputs"]["value"] = height       # Height(px)
-    workflow["355"]["inputs"]["value"] = duration_s   # Duration(秒)
-    workflow["331"]["inputs"]["noise_seed"] = random.randint(0, 2**31 - 1)  # 1段目seedランダム化
-    # 330(2段目、3stepのupscaleのみ)は固定42のまま
+    workflow["410"]["inputs"]["value"] = prompt      # Prompt: テキストプロンプト
+    workflow["417"]["inputs"]["value"] = width        # Width(px)
+    workflow["419"]["inputs"]["value"] = height       # Height(px)
+    workflow["413"]["inputs"]["value"] = duration_s   # Duration(秒)
+    workflow["437"]["inputs"]["noise_seed"] = random.randint(0, 2**31 - 1)  # 1段目seedランダム化
+    # 446(2段目、latent upscale pass)は固定42のまま
     if keyframe_server_filename:
-        workflow["356"]["inputs"]["value"] = False                       # T2V→I2Vスイッチ
-        workflow["269"]["inputs"]["image"] = keyframe_server_filename    # input2: 1stフレーム
+        workflow["414"]["inputs"]["value"] = False                        # T2V→I2Vスイッチ
+        workflow["395"]["inputs"]["image"] = keyframe_server_filename     # Load First Frame
 
     server = cfg.COMFYUI_VIDEO_URL
     prompt_id = await _queue_prompt(workflow, server)
@@ -238,71 +238,68 @@ async def generate_t2v_video(prompt: str, width: int = 720, height: int = 1280, 
     return await _download_output(filename, subfolder, server, dest)
 
 
-async def generate_video_10e(prompt: str, keyframe_server_filename: str, width: int, height: int, duration_s: float) -> Path:
-    """動画を生成してローカルに保存したPathを返す(10Erosチェックポイント+DMD LoRAの検証用ワークフロー、
-    workflows/10E_video.json)。i2v_timeline_cliV6のテスト用エンジン(.envのI2V_VIDEO_ENGINE=10eで有効化、
-    デフォルトはgenerate_t2v_video()のまま)。触ってよいノードはユーザー指定の5つのみ(2026-07-09)、
-    それ以外(LoRA有効/無効・negativeプロンプト等)はワークフローJSONの値をそのまま使う。
+# MiniMax-H3は高解像度だと生成が大幅に遅くなるため(2026-08-03実機確認)、t2v/i2v共通で
+# 0.4MP・16:9・multiple=32のResolutionSelector実測値(864x480、SD)に固定する。ワークフロー内の
+# ResolutionSelector(node 115)は接続を切って読まない(WFファイル側のmegapixels値に依存すると、
+# t2v/i2vで別々の値になっていて食い違う事故が起きたため、2026-08-03)。
+# .envのMiniMaxH3_HD=1で0.9MP相当(1280x736、HD)へ切り替え可能(2026-08-03)
+_H3_LANDSCAPE_RESOLUTION_SD = (864, 480)
+_H3_LANDSCAPE_RESOLUTION_HD = (1280, 736)
+
+
+def h3_landscape_resolution() -> tuple[int, int]:
+    """.envのMiniMaxH3_HDに応じてH3のベース解像度(landscape基準)を返す。generate_video_h3()と
+    i2v_timeline_cliV6.pyの_keyframe_size()の両方から呼ばれる共有ヘルパー(2026-08-03、
+    SD/HD切り替えの分岐ロジックを2箇所に重複させないため)。"""
+    return _H3_LANDSCAPE_RESOLUTION_HD if cfg.MiniMaxH3_HD else _H3_LANDSCAPE_RESOLUTION_SD
+
+
+async def generate_video_h3(prompt: str, workflow_json: str, width: int, height: int, duration_s: float,
+                             keyframe_server_filename: str | None = None) -> Path:
+    """MiniMax-H3ワークフローで動画を生成してローカルに保存したPathを返す
+    (workflows/minimax_h3_t2v.json / minimax_h3_i2v.json)。.envのMiniMaxH3_T2V/MiniMaxH3_I2V
+    で有効化(空なら呼ばれない、_generate_i2v_video()/_generate_t2v_video_dispatch()が
+    I2V_VIDEO_ENGINE/T2V_VIDEO_ENGINEより優先で振り分ける)。
+
+    width/height: node 105:104(MiniMaxH3ImageToVideo)のwidth/height inputは元々ワークフロー内の
+    ResolutionSelector(node 115)からのリンクだったが、node 115は9:16固定で--h(横)/--v(縦)の
+    向きを反映できなかった(2026-08-03、実機で「i2vを--hにしたのに縦で生成される」不具合として発覚)。
+    リンクは生の数値で上書きし、実際のピクセル数はh3_landscape_resolution()(SD=864x480/
+    HD=1280x736、.envのMiniMaxH3_HDで切替)固定を使う。呼び出し元のwidth/heightは
+    **向き(landscapeかportraitか)の判定にのみ**使い、
+    landscapeならそのまま、portraitなら幅高を入れ替える。node 115自体は接続を切られた無害な
+    未使用ノードとして残る。
+
+    duration_s: 生の秒数のままnode 105:111へ書き込む。node 105:107のComfyMathExpressionが
+    秒→フレーム数への変換とquantize(frames % 17 == 5に切り上げ)をワークフロー内部で行うため、
+    Python側でフレーム数へ事前変換しないこと(尺が伸びると超線形にコストが増えるのはこの
+    quantizeが原因、既知の挙動でバグではない)。
+
+    keyframe_server_filename: 指定時はi2vワークフロー側のnode 114(LoadImage)に1stフレームを
+    設定する。t2vワークフローにはnode 114が存在しないため未指定のまま呼ぶこと。
     """
-    workflow = _load_workflow("10E_video.json")
+    workflow = _load_workflow(workflow_json)
 
-    workflow["536"]["inputs"]["text"] = prompt                        # CLIP Text Encode (Prompt)
-    workflow["837"]["inputs"]["image"] = keyframe_server_filename      # Load Image
-    workflow["918"]["inputs"]["value"] = width                        # Video Width
-    workflow["919"]["inputs"]["value"] = height                       # Video Height
-    workflow["920"]["inputs"]["value"] = round(duration_s * 24)       # Length (Frame Count, X/24 = Seconds)
-    workflow["524"]["inputs"]["seed"] = random.randint(0, 2**31 - 1)  # Seed (rgthree)
-    # JSON既定は save_output=false(ComfyUI手動プレビュー用の値のまま)なので、パイプラインから
-    # 呼ぶ時は明示的にtrueへ上書きしないと出力ファイルが保存されない
-    workflow["597"]["inputs"]["save_output"] = True                   # Video Combine
+    landscape_w, landscape_h = h3_landscape_resolution()
+    width, height = (landscape_w, landscape_h) if width >= height else (landscape_h, landscape_w)
 
-    server = cfg.COMFYUI_VIDEO_URL
-    prompt_id = await _queue_prompt(workflow, server)
-    outputs = await _wait_for_output(prompt_id, server, VIDEO_TIMEOUT_S)
-
-    # node 597 = VHS_VideoCombine
-    node_out = outputs.get("597", {})
-    files = node_out.get("gifs") or node_out.get("videos") or []
-    if not files:
-        raise RuntimeError(f"10Eros video output not found: {node_out}")
-    file_info = files[0]
-    filename = file_info["filename"]
-    subfolder = file_info.get("subfolder", "")
-
-    dest = cfg.GENERATED_DIR / filename
-    return await _download_output(filename, subfolder, server, dest)
-
-
-async def generate_video_refine_ltx23(prompt: str, keyframe_server_filename: str, width: int, height: int, duration_s: float, bypass_likeness: bool = False) -> Path:
-    """動画を生成してローカルに保存したPathを返す(顔検出+同一性アンカー付き2段サンプリング検証用ワークフロー、
-    workflows/refine_video.json)。i2v_timeline_cliV6のテスト用エンジン(.envのI2V_VIDEO_ENGINE=refineで有効化)。
-    触ってよいノードはユーザー指定の6つのみ(2026-07-10)、それ以外(LoRA・likeness anchor各種strength・
-    negativeプロンプト・サンプラー設定等)はワークフローJSONの値をそのまま使う。
-    bypass_likeness=Trueで`354 LTX Likeness Anchor`をbypassする(`--norefine`用。顔が手/物で隠れる
-    動作でこのノードが同一性を引き戻そうとして画像が破綻する対策、2026-07-10)。"""
-    workflow = _load_workflow("refine_video.json")
-
-    workflow["303"]["inputs"]["value"] = prompt                             # Prompt
-    workflow["269"]["inputs"]["image"] = keyframe_server_filename           # LoadImage
-    workflow["314"]["inputs"]["value"] = width                              # Width
-    workflow["299"]["inputs"]["value"] = height                             # Height
-    workflow["301"]["inputs"]["value"] = round(24 * duration_s) + 1        # Length (24fps*秒+1)
-    workflow["275"]["inputs"]["noise_seed"] = random.randint(0, 2**31 - 1)  # RandomNoise (Generate Low Resolution)
-    # JSON既定はTrueだが、10eワークフロー統合時にJSON既定falseで保存されない事故があったため、
-    # ワークフロー側の値に関わらず防御的に明示上書きする
-    workflow["351"]["inputs"]["save_output"] = True                        # Video Combine (終段)
-    if bypass_likeness:
-        workflow["354"]["inputs"]["bypass"] = True                         # LTX Likeness Anchor
+    workflow["105:104"]["inputs"]["prompt"] = prompt                       # MiniMaxH3ImageToVideo
+    workflow["105:104"]["inputs"]["width"] = width                         # ResolutionSelectorリンクを上書き
+    workflow["105:104"]["inputs"]["height"] = height                       # 同上
+    if keyframe_server_filename:
+        workflow["114"]["inputs"]["image"] = keyframe_server_filename      # LoadImage(i2vのみ存在)
+    workflow["105:111"]["inputs"]["value"] = duration_s                    # PrimitiveFloat(秒数のまま)
+    workflow["105:15"]["inputs"]["noise_seed"] = random.randint(0, 2**31 - 1)  # RandomNoise
 
     server = cfg.COMFYUI_VIDEO_URL
     prompt_id = await _queue_prompt(workflow, server)
     outputs = await _wait_for_output(prompt_id, server, VIDEO_TIMEOUT_S)
 
-    # node 351 = VHS_VideoCombine (終段、音声付き)
-    node_out = outputs.get("351", {})
-    files = node_out.get("videos") or node_out.get("gifs") or node_out.get("images") or []
+    # node 92 = SaveVideo(ネイティブComfyUIノード、10E/refineのVHS_VideoCombineとは別物)
+    node_out = outputs.get("92", {})
+    files = node_out.get("videos") or node_out.get("images") or node_out.get("gifs") or []
     if not files:
-        raise RuntimeError(f"refine_ltx2_3 video output not found: {node_out}")
+        raise RuntimeError(f"MiniMax-H3 video output not found: {node_out}")
     file_info = files[0]
     filename = file_info["filename"]
     subfolder = file_info.get("subfolder", "")

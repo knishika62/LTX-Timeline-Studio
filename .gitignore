@@ -24,6 +24,8 @@ workflows/*
 !workflows/video.json
 !workflows/image.json
 !workflows/rtx_video_upscale.json
+!workflows/minimax_h3_t2v.json
+!workflows/minimax_h3_i2v.json
 .env
 __pycache__/
 .DS_Store

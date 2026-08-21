@@ -28,6 +28,7 @@ interface UiSegment {
   mt?: number;
   status: UiStatus;
   keyframePath: string | null;
+  kfMt?: number;
   removed: boolean;
   trimStart: number;
   trimEnd: number;
@@ -262,6 +263,7 @@ function segmentsFromDetail(detail: LibraryRunDetail): UiSegment[] {
       mt: s?.mt,
       status: (s ? "done" : kf ? "generating" : "queued") as UiStatus,
       keyframePath: kf?.path ?? null,
+      kfMt: kf?.mt,
       removed: false,
       trimStart: 0,
       trimEnd: 0,
@@ -339,6 +341,7 @@ function segmentsFromJobState(state: {
       mt: live?.mt,
       status: (live ? "done" : kf ? "generating" : "queued") as UiStatus,
       keyframePath: kf?.path ?? null,
+      kfMt: kf?.mt,
       removed: false,
       trimStart: 0,
       trimEnd: 0,
@@ -1105,7 +1108,7 @@ export default function App() {
                     <div className={`clip-status-bar ${seg.status}`} />
                     {selection.engine === "i2v" ? (
                       seg.keyframePath ? (
-                        <ClipThumbMedia kind="image" src={media(seg.keyframePath, seg.mt)} />
+                        <ClipThumbMedia kind="image" src={media(seg.keyframePath, seg.kfMt)} />
                       ) : (
                         <span style={{ color: "var(--text-dim)", fontSize: 10 }}>awaiting keyframe</span>
                       )
@@ -1513,7 +1516,7 @@ function SegmentInspector({ seg, allSegments, engine, runId, refineEnabled, onRe
       path: (engine === "i2v" ? s.keyframePath : s.path)!,
       caption: s.label,
       kind: (engine === "i2v" ? "image" : "video") as "image" | "video",
-      v: s.mt,
+      v: engine === "i2v" ? s.kfMt : s.mt,
     }));
     open(items, idx);
   };
@@ -1554,7 +1557,7 @@ function SegmentInspector({ seg, allSegments, engine, runId, refineEnabled, onRe
         <div className="inspector-section">
           <h3>Keyframe</h3>
           {seg.keyframePath ? (
-            <div className="kf-preview" onClick={openLightbox} title="Click to enlarge (arrow keys for other segments)" style={{ backgroundImage: `url(${media(seg.keyframePath, seg.mt)})`, backgroundSize: "cover", backgroundPosition: "center" }} />
+            <div className="kf-preview" onClick={openLightbox} title="Click to enlarge (arrow keys for other segments)" style={{ backgroundImage: `url(${media(seg.keyframePath, seg.kfMt)})`, backgroundSize: "cover", backgroundPosition: "center" }} />
           ) : (
             <div className="inspector-empty" style={{ padding: "10px 0" }}>Not generated yet</div>
           )}

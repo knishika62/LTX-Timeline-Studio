@@ -42,12 +42,12 @@ FADE_OUT_ENABLED: bool = _get("FADE_OUT_ENABLED", "true").lower() == "true"
 # Krea2は1280x720ネイティブだと本領発揮しないため導入(2026-07-08、ユーザー確認: 1.2倍=1536x864/864x1536)
 KEYFRAME_SIZE_SCALE: float = float(_get("KEYFRAME_SIZE_SCALE", "1.0"))
 
-# i2v_timeline_cliV6 の動画生成エンジン切替(テスト用、2026-07-09)。"default" = 従来通り
-# generate_t2v_video()(video.jsonのI2Vモード)。"10E" = generate_video_10e()
-# (workflows/10E_video.json、10Erosチェックポイント+DMD LoRAの検証用ワークフロー)。
-# "refine" = generate_video_refine_ltx23()(workflows/refine_video.json、顔検出+同一性アンカー付き
-# 2段サンプリング検証用ワークフロー、2026-07-10)。
-# t2v_timeline_cliV6は常にgenerate_t2v_video()のまま(このフラグの影響を受けない)
+# i2v_timeline_cliV6 の動画生成エンジン切替。"default" = 従来通りgenerate_t2v_video()
+# (video.jsonのI2Vモード)。それ以外の値は workflows/配下のファイル名として扱い、
+# generate_t2v_video()へそのまま渡す(video.jsonと同じノードID体系を持つ個人カスタムWF用、
+# T2V_VIDEO_ENGINEと同じ「ファイル名素通し」方式、2026-08-12にLTX-2.5移行に伴い"10E"/"refine"
+# という2.3固有の専用キーワード分岐を撤去)。t2v_timeline_cliV6は常にgenerate_t2v_video()のまま
+# (このフラグの影響を受けない)
 I2V_VIDEO_ENGINE: str = _get("I2V_VIDEO_ENGINE", "default")
 
 # generate_t2v_video()が読み込むComfyUIワークフローJSON(workflows/配下のファイル名)。
@@ -55,6 +55,18 @@ I2V_VIDEO_ENGINE: str = _get("I2V_VIDEO_ENGINE", "default")
 # (エンジン名でノード構成を切り替えるI2V_VIDEO_ENGINEとは違い、node ID体系は同一のまま前提)。
 # 指定JSONが存在しない、またはノード構成が異なる場合のエラーはユーザー側の責任(バリデーションしない、2026-07-16)
 T2V_VIDEO_ENGINE: str = _get("T2V_VIDEO_ENGINE", "video.json")
+
+# MiniMax-H3専用エンジン(workflows/minimax_h3_t2v.json / minimax_h3_i2v.json)。
+# I2V_VIDEO_ENGINE/T2V_VIDEO_ENGINEとは別軸——H3はプロンプトの「形」自体が違う(3フィールド構造化
+# テキスト+<d>セリフタグ)ため、ノードID体系がvideo.json互換のファイル名差し替え前提の既存の
+# 仕組みには乗せられない。空文字(デフォルト)なら無効で従来通りI2V_VIDEO_ENGINE/T2V_VIDEO_ENGINEの
+# まま、値を入れると最優先で generate_video_h3() へ振り分けられる(2026-08-03)
+MiniMaxH3_T2V: str = _get("MiniMaxH3_T2V", "")
+MiniMaxH3_I2V: str = _get("MiniMaxH3_I2V", "")
+
+# MiniMaxH3_T2V/I2Vの固定解像度をSD(864x480系)からHD(1280x736系)へ切り替える(2026-08-03)。
+# "1"の時のみHD、それ以外(デフォルト空文字含む)はSD
+MiniMaxH3_HD: bool = _get("MiniMaxH3_HD", "0") == "1"
 
 IMAGE_PROMPT_PREFIX: str = _get(
     "IMAGE_PROMPT_PREFIX",

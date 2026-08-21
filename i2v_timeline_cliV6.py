@@ -10,7 +10,7 @@ V5(backup/i2v_timeline_cliV5.py)との違い: Pass0を「創造(INTENT/HIGHLIGHT
 
 キーフレームI2V方式のタイムライン生成CLI(元の説明、無印版から継承):
 t2v_timeline_cliV2(T2V直接生成)との違い:
-  - 各シーンの1stフレーム(キーフレーム)をZ-Image(image.json)で先に生成し、LTX-2.3のI2Vで動かす
+  - 各シーンの1stフレーム(キーフレーム)をZ-Image(image.json)で先に生成し、LTX-2.5のI2Vで動かす
   - Pass3をKeyframe Formatter(静止画プロンプト、見た目・構図の全情報)と
     Motion Formatter(動きのみ。LTX公式I2V原則「画像に見えている静的要素は記述しない」)に分割
   - キーフレームのキャラLoRAは .env の KEYFRAME_LORA_NAME / KEYFRAME_LORA_STRENGTH で可変
@@ -39,7 +39,7 @@ from openai import AsyncOpenAI
 
 from modules import pipeline_config as cfg
 from modules import prompt_generator
-from modules.comfyui_client import generate_image, generate_t2v_video, generate_video_10e, generate_video_refine_ltx23, upload_image_to_comfyui
+from modules.comfyui_client import generate_image, generate_t2v_video, generate_video_h3, upload_image_to_comfyui, h3_landscape_resolution
 from modules.timeline_common import (
     _fmt_elapsed,
     _fmt_duration,
@@ -68,6 +68,7 @@ from modules.timeline_common import (
     _write_scene_description,
     _plan_creative_intent_json, _plan_shot_directions_json, _audit_shot_variety_json,
     _resolve_state_continuity_json, _flatten_state,
+    _format_h3_prompt,
 )
 import t2v_timeline_cliV6 as _t2v_pass3
 
@@ -169,7 +170,7 @@ Whenever the shot must show anything located ABOVE the subject's raised-arm heig
 → medium close-up minimum so expression and gesture are clear.
 
 ### ANIMAL IN FRAME
-→ Always include the animal's characteristic sound in the audio description (cat meows/purrs, dog barks, birds chirp, etc.), regardless of whether LTX-2.3 can reproduce it faithfully.
+→ Always include the animal's characteristic sound in the audio description (cat meows/purrs, dog barks, birds chirp, etc.), regardless of whether LTX-2.5 can reproduce it faithfully.
 
 ## ANGLE VARIETY RULE
 - Check the previous 2 segments. NEVER assign the same camera side or angle as either of them.
@@ -385,7 +386,7 @@ def _detect_violations(ltx_prompt: str, direction: str, orientation: str, reserv
 
 
 _PROMPT_FIXER_SYSTEM = """\
-You are an LTX-2.3 prompt fixer. You receive a prompt and a list of specific violations.
+You are an LTX-2.5 prompt fixer. You receive a prompt and a list of specific violations.
 Rewrite the prompt so that every violation is fixed. Change ONLY what the violations require; preserve everything else — wording, style keywords, character sentence, audio description, one flowing paragraph, and roughly the SAME length as the original (do not expand it).
 
 VIOLATED RULES TO FIX:
@@ -398,7 +399,7 @@ _SCENE_WRITER_SYSTEM = """\
 You are a scene director describing exactly what is visible in a single camera shot.
 Your job: translate the camera direction and shot action into precise spatial language — like describing what you see on a monitor to a VFX supervisor.
 
-Do NOT use LTX-2.3 terminology or cinematic jargon yet. Just describe the spatial reality.
+Do NOT use LTX-2.5 terminology or cinematic jargon yet. Just describe the spatial reality.
 
 ⚠️ STATE IS AUTHORITATIVE: if the "Creative intent" block below includes a STATE line (time-of-day/lighting, weather, current outfit), that is the confirmed ground truth for THIS shot — commit to it fully for the lighting, weather, and clothing you describe, even when it differs from the baseline in "Character & Setting" (e.g. STATE says night while the reference's default scene is daytime). Never hedge between two possibilities ("suggesting early morning or late night") — state the one lighting condition plainly. This applies even when the shot action itself doesn't mention it.
 
@@ -604,7 +605,7 @@ _KF1_RULE = (
 )
 
 _MOTION_FORMATTER_SYSTEM = """\
-You are an image-to-video motion prompt writer for LTX-2.3.
+You are an image-to-video motion prompt writer for LTX-2.5.
 You receive an ALREADY-VERIFIED shot description (character, outfit, environment, and camera work already
 confirmed correct) — but the first frame is ALSO given separately as an input image, so appearance, outfit,
 environment and composition are already defined visually and must NOT be repeated here.
@@ -1156,25 +1157,35 @@ async def _run_fixer(prompt: str, violated_rules: str, direction: str, action: s
 def _keyframe_size(width: int, height: int) -> tuple[int, int]:
     """キーフレーム生成解像度(動画のwidth/heightにKEYFRAME_SIZE_SCALEを掛けたもの、アスペクト比維持)。
     I2V側ワークフロー(node 344 ResizeImageMaskNode)がキーフレームを動画の最終解像度へ自動リサイズ
-    するため、キーフレームは動画本体より高解像度で生成しても問題ない(2026-07-08、Krea2対策)。"""
+    するため、キーフレームは動画本体より高解像度で生成しても問題ない(2026-07-08、Krea2対策)。
+
+    MiniMaxH3_I2V使用時はベースとなるwidth/heightだけ差し替える: H3 WFのfirst_frame(node 114)
+    にはリサイズノードが無いため、通常のCLI解像度(720x1280/1280x720)ではアスペクト比が動画側の
+    固定解像度(h3_landscape_resolution()、SD=864x480系)と微妙にズレる(16:9厳密値 vs 32倍数
+    バケットの1.8、約1.2%差)。SD(864x480)はH3の速度優先で絞った値のため、そのまま
+    KEYFRAME_SIZE_SCALEを掛けるだけではKrea2に対して低すぎる——動画側の固定解像度を2倍した
+    ものをベースとして使う。HD(1280x736、.envのMiniMaxH3_HD=1)の時は元々十分な解像度のため
+    2倍はしない(2026-08-03、ユーザー指定)。KEYFRAME_SIZE_SCALEはどちらでも他エンジンと同様に
+    一律で掛ける——H3だからといってこの設定自体を特別扱いする理由はない。"""
+    if cfg.MiniMaxH3_I2V:
+        landscape_w, landscape_h = h3_landscape_resolution()
+        width, height = (landscape_w, landscape_h) if width >= height else (landscape_h, landscape_w)
+        if not cfg.MiniMaxH3_HD:
+            width, height = width * 2, height * 2
     return round(width * cfg.KEYFRAME_SIZE_SCALE), round(height * cfg.KEYFRAME_SIZE_SCALE)
 
 
-async def _generate_i2v_video(prompt: str, kf_server_name: str, width: int, height: int, duration_s: float, bypass_likeness: bool = False) -> Path:
-    """I2V動画生成の実行エンジン切替(.envのI2V_VIDEO_ENGINE、テスト用)。
-    "10E"ならworkflows/10E_video.json(10Erosチェックポイント検証用、2026-07-09)、
-    "refine"ならworkflows/refine_video.json(顔検出+同一性アンカー付き2段サンプリング検証用、2026-07-10)、
+async def _generate_i2v_video(prompt: str, kf_server_name: str, width: int, height: int, duration_s: float) -> Path:
+    """I2V動画生成の実行エンジン切替(.envのI2V_VIDEO_ENGINE)。
     "default"なら従来通りgenerate_t2v_video()(T2V_VIDEO_ENGINEのファイルをI2Vモードで使用)。
-    それ以外(上記3つのいずれでもない値)は**ファイル名として扱い**、workflows/配下のそのファイルを
-    generate_t2v_video()へそのまま渡す(video.jsonと同じノードID体系を持つ前提、それ以外は
-    KeyErrorになる自己責任、2026-07-16)。t2v_timeline_cliV5はこのフラグを見ないため無条件に
-    従来のまま(generate_t2v_video()を直接呼ぶ)。
-    bypass_likenessは"refine"エンジンでのみ意味を持つ(`--norefine`用、顔が手/物で隠れるセグメントの
-    破綻対策としてLTX Likeness Anchorだけbypassする)。"""
-    if cfg.I2V_VIDEO_ENGINE == "10E":
-        return await generate_video_10e(prompt, kf_server_name, width, height, duration_s)
-    if cfg.I2V_VIDEO_ENGINE == "refine":
-        return await generate_video_refine_ltx23(prompt, kf_server_name, width, height, duration_s, bypass_likeness=bypass_likeness)
+    それ以外は**ファイル名として扱い**、workflows/配下のそのファイルをgenerate_t2v_video()へそのまま
+    渡す(video.jsonと同じノードID体系を持つ前提、それ以外はKeyErrorになる自己責任、2026-07-16)。
+    t2v_timeline_cliV5はこのフラグを見ないため無条件に従来のまま(generate_t2v_video()を直接呼ぶ)。
+
+    MiniMaxH3_I2Vが設定されていれば、上記のI2V_VIDEO_ENGINE分岐より最優先でgenerate_video_h3()へ
+    振り分ける(既存のdefault/else分岐は一切変更しない、2026-08-03)。"""
+    if cfg.MiniMaxH3_I2V:
+        return await generate_video_h3(prompt, cfg.MiniMaxH3_I2V, width, height, duration_s, keyframe_server_filename=kf_server_name)
     if cfg.I2V_VIDEO_ENGINE == "default":
         return await generate_t2v_video(prompt, width, height, duration_s, keyframe_server_filename=kf_server_name)
     return await generate_t2v_video(prompt, width, height, duration_s, keyframe_server_filename=kf_server_name,
@@ -1223,7 +1234,7 @@ async def _run_direct(args: argparse.Namespace) -> None:
 
     seg_path = _seg_video_path(ts, 1, "direct", "i2v6")
     print(f"[i2v-tl6] 動画生成中(I2V)...")
-    raw_path = await _generate_i2v_video(motion_prompt, kf_server_name, width, height, duration, bypass_likeness=args.norefine)
+    raw_path = await _generate_i2v_video(motion_prompt, kf_server_name, width, height, duration)
     raw_path.rename(seg_path)
     print(f"[i2v-tl6] 保存: {seg_path.name}")
 
@@ -1291,9 +1302,6 @@ async def _run_retry(args: argparse.Namespace) -> None:
         print(f"[i2v-tl6] 存在しないセグメント番号: {missing}(1〜{len(segments)})")
         return
 
-    if args.norefine and cfg.I2V_VIDEO_ENGINE != "refine":
-        print(f"[i2v-tl6] 警告: --norefine が指定されましたが I2V_VIDEO_ENGINE={cfg.I2V_VIDEO_ENGINE!r} のため無視されます(refine時のみ有効)")
-
     print(f"[i2v-tl6] リトライ: run={run_id} / {width}x{height} / 対象セグメント: {targets}")
 
     if args.debug:
@@ -1355,7 +1363,7 @@ async def _run_retry(args: argparse.Namespace) -> None:
             print(f"[i2v-tl6]   [{n}/{len(segments)}] キーフレーム保存: {kf_path.name} → アップロード中...")
         kf_server_name = await upload_image_to_comfyui(kf_path)
         print(f"[i2v-tl6] [{n}/{len(segments)}] {seg['duration']}s 動画再生成中(I2V)...")
-        raw_path = await _generate_i2v_video(seg["prompt"], kf_server_name, width, height, seg["duration"], bypass_likeness=args.norefine)
+        raw_path = await _generate_i2v_video(seg["prompt"], kf_server_name, width, height, seg["duration"])
         raw_path.rename(dest)
         print(f"[i2v-tl6]   [{n}/{len(segments)}] 保存: {dest.name}")
 
@@ -1453,6 +1461,11 @@ async def _process_segment_phase1(
     async with llm_sem:
         motion_prompt = await _format_motion_prompt(ground_truth, ambience, seg["duration"], orientation, direction, seg["action"])
     print(f"[i2v-tl6]   [{i}/{total}] motion prompt:\n{motion_prompt}")
+    if cfg.MiniMaxH3_I2V:
+        # H3はLTX/i2vと同じPass3b(LLM+Pass4 lint+enforce_*一式)を経た本文をそのまま
+        # MiniMaxの構造化フォーマットへ組み替えるだけ(2026-08-03、独自の簡易パイプラインを作らない方針)
+        motion_prompt = _format_h3_prompt(motion_prompt, ambience, seg["action"])
+        print(f"[i2v-tl6]   [{i}/{total}] H3 prompt (Pass3b出力をMiniMax構造化形式へ変換):\n{motion_prompt}")
 
     prompt_block = (
         f"[{i}/{total}] {seg['label']} ({seg['duration']}s)\n"
@@ -1485,15 +1498,14 @@ async def _process_segment_phase2(
     return {"seg": seg, "num": i, "motion": item["motion"], "kf_path": kf_path}
 
 
-async def _process_segment_phase3(item: dict, total: int, width: int, height: int, ts: str, bypass_likeness: bool = False) -> Path:
+async def _process_segment_phase3(item: dict, total: int, width: int, height: int, ts: str) -> Path:
     """フェーズ3: 1セグメント完結の非同期処理(キーフレームアップロード→I2V動画生成)。
-    ComfyUI自体がジョブキューを持つため、無制限に並列実行する(2026-07-07、旧フェーズ2)。
-    bypass_likenessは"refine"エンジンでのみ意味を持つ(`--norefine`、顔occlusion時の破綻対策)。"""
+    ComfyUI自体がジョブキューを持つため、無制限に並列実行する(2026-07-07、旧フェーズ2)。"""
     seg, i = item["seg"], item["num"]
     print(f"[i2v-tl6] [{i}/{total}] キーフレームをアップロード中...")
     kf_server_name = await upload_image_to_comfyui(item["kf_path"])
     print(f"[i2v-tl6] [{i}/{total}] {seg['duration']}s 動画生成中(I2V)...")
-    raw_path = await _generate_i2v_video(item["motion"], kf_server_name, width, height, seg["duration"], bypass_likeness=bypass_likeness)
+    raw_path = await _generate_i2v_video(item["motion"], kf_server_name, width, height, seg["duration"])
     named = _seg_video_path(ts, i, seg["label"], "i2v6")
     raw_path.rename(named)
     print(f"[i2v-tl6]   [{i}/{total}] 保存: {named.name}")
@@ -1502,7 +1514,7 @@ async def _process_segment_phase3(item: dict, total: int, width: int, height: in
 
 async def main() -> None:
     start_time = time.monotonic()
-    parser = argparse.ArgumentParser(description="キーフレームI2V方式のタイムライン生成CLI(Z-Imageで1stフレーム生成→LTX-2.3 I2V)")
+    parser = argparse.ArgumentParser(description="キーフレームI2V方式のタイムライン生成CLI(Z-Imageで1stフレーム生成→LTX-2.5 I2V)")
     orient = parser.add_mutually_exclusive_group()
     orient.add_argument("--h", action="store_true", dest="horizontal", help="横向き 1280×720(デフォルト)")
     orient.add_argument("--v", action="store_true", dest="vertical",   help="縦向き 720×1280")
@@ -1510,9 +1522,6 @@ async def main() -> None:
     parser.add_argument("--debug", action="store_true", help="プロンプト生成のみ、動画生成をスキップ")
     parser.add_argument("--retry", metavar="RUN_ID", help="既存runのセグメントを再生成(例: --retry 20260704_080510)。--seg 必須(directモードのrunは省略可)、--f とは排他")
     parser.add_argument("--seg", metavar="N[,N...]", help="--retry で再生成するセグメント番号(1始まり、カンマ区切り)")
-    parser.add_argument("--norefine", action="store_true",
-                         help="I2V_VIDEO_ENGINE=refine時、LTX Likeness Anchorを全セグメントでbypassする"
-                              "(顔が手/物で隠れるセグメントで画像が破綻する対策)。--f・--retry --seg・--direct どれでも使える")
     parser.add_argument("--keep", action="store_true",
                          help="--retry --seg 専用。既存のキーフレーム画像をそのまま使い、動画生成だけをやり直す"
                               "(キーフレームは問題なく動画側だけ壊れた場合に、新seedでのキーフレーム再生成を省く)")
@@ -1533,8 +1542,6 @@ async def main() -> None:
             parser.error("--direct には --f が必要です")
         if args.keep:
             print(f"[i2v-tl6] 警告: --keep は新規の--direct生成では無効です(既存キーフレームが無いため無視)")
-        if args.norefine and cfg.I2V_VIDEO_ENGINE != "refine":
-            print(f"[i2v-tl6] 警告: --norefine が指定されましたが I2V_VIDEO_ENGINE={cfg.I2V_VIDEO_ENGINE!r} のため無視されます(refine時のみ有効)")
         await _run_direct(args)
         print(f"[i2v-tl6] 経過時間: {_fmt_elapsed(start_time)}\n")
         return
@@ -1568,9 +1575,6 @@ async def main() -> None:
         return
     if not args.f:
         parser.error("--f が必要です(リトライは --retry RUN_ID --seg N、または --seg N のみで直近run)")
-
-    if args.norefine and cfg.I2V_VIDEO_ENGINE != "refine":
-        print(f"[i2v-tl6] 警告: --norefine が指定されましたが I2V_VIDEO_ENGINE={cfg.I2V_VIDEO_ENGINE!r} のため無視されます(refine時のみ有効)")
 
     width, height = (720, 1280) if args.vertical else (1280, 720)
     orient_label  = "縦 720×1280" if args.vertical else "横 1280×720"
@@ -1701,7 +1705,7 @@ async def main() -> None:
     print(f"[i2v-tl6] (動画フェーズ中に目視確認できます。中断する場合は Ctrl+C → ダメなセグメントは --seg N で引き直し)\n")
 
     # ===== フェーズ3: 全セグメントの動画生成(video GPU) =====
-    phase3_tasks = [_process_segment_phase3(item, len(prepared), width, height, ts, bypass_likeness=args.norefine) for item in prepared]
+    phase3_tasks = [_process_segment_phase3(item, len(prepared), width, height, ts) for item in prepared]
     seg_paths: list[Path] = list(await asyncio.gather(*phase3_tasks))
 
     # ffmpeg concat
