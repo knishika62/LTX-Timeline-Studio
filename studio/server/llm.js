@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import OpenAI from "openai";
 import { readEnv } from "./config.js";
 import { validatePrompt } from "./prompts.js";
@@ -186,9 +187,23 @@ text, no preamble, no markdown, no quotes.
 // LLM呼び出し(.env は都度読む——ハーネス起動中の .env 変更を即反映)
 // ============================================================
 
-async function runLLM(system, user, temperature = 0.7) {
+// opencode.ai "Go" プロバイダ(base_urlが https://opencode.ai/zen/go/v1 の時)専用の必須リクエスト
+// ヘッダー(2026-09、API仕様変更でx-opencode-session必須化: https://opencode.ai/docs/go/)。
+// sessionId は呼び出し元(draftTimelinePrompt等)が「1つの会話」単位で発番しrunLLMへ渡す
+// (Pythonのmodules/pipeline_config.pyと違い、サーバープロセスは複数の独立した会話を並行して
+// 扱うため、プロセス単位で1つ固定にはできない)。他プロバイダでは何もしない
+function llmDefaultHeaders(env, sessionId) {
+  if (!env.LLM_BASE_URL?.startsWith("https://opencode.ai/zen/go")) return undefined;
+  return { "x-opencode-session": sessionId, "User-Agent": "LTX-timeline/1.0" };
+}
+
+async function runLLM(system, user, temperature = 0.7, sessionId = randomUUID()) {
   const env = readEnv();
-  const client = new OpenAI({ baseURL: env.LLM_BASE_URL, apiKey: env.LLM_API_KEY || "none" });
+  const client = new OpenAI({
+    baseURL: env.LLM_BASE_URL,
+    apiKey: env.LLM_API_KEY || "none",
+    defaultHeaders: llmDefaultHeaders(env, sessionId),
+  });
   const resp = await client.chat.completions.create({
     model: env.LLM_MODEL,
     messages: [
@@ -239,7 +254,9 @@ export async function draftTimelinePrompt(keywords, durationHintS, minBeatS = 3,
   const planSystem = omnibus ? BEAT_PLAN_OMNIBUS_SYSTEM : BEAT_PLAN_SYSTEM;
   const writeSystem = omnibus ? BEAT_WRITE_OMNIBUS_SYSTEM : BEAT_WRITE_SYSTEM;
 
-  const setupRaw = await runLLM(setupSystem, keywords.trim(), 0.8);
+  // SETUP→BEAT_PLAN→BEAT_WRITEの3パスは1つの会話として同じsessionIdを使い回す
+  const sessionId = randomUUID();
+  const setupRaw = await runLLM(setupSystem, keywords.trim(), 0.8, sessionId);
 
   // Pass2にはSetup結果だけでなく元キーワードも渡す(Setupは固定要素しか決めないため、
   // 「浴衣に着替える」「猫」のようなビート要素が silently 消える事故の再発防止、Gradio版と同じ)
@@ -247,7 +264,7 @@ export async function draftTimelinePrompt(keywords, durationHintS, minBeatS = 3,
     `Original idea/keywords from the user:\n${keywords.trim()}\n\n` +
     `Scene setup (already decided):\n${setupRaw}\n\n` +
     `Target total duration: about ${durationHintS} seconds.`;
-  const planRaw = await runLLM(planSystem, planUser, 0.8);
+  const planRaw = await runLLM(planSystem, planUser, 0.8, sessionId);
 
   const beats = [];
   for (const line of planRaw.split("\n")) {
@@ -257,7 +274,7 @@ export async function draftTimelinePrompt(keywords, durationHintS, minBeatS = 3,
   if (!beats.length) throw new Error(`Beat planning pass produced no parseable beats:\n${planRaw}`);
 
   const gistList = beats.map((b, i) => `${i + 1}. ${b.gist} (duration ${b.dur}s)`).join("\n");
-  const writeRaw = await runLLM(writeSystem, `Scene setup:\n${setupRaw}\n\nBeats to write:\n${gistList}`, 0.7);
+  const writeRaw = await runLLM(writeSystem, `Scene setup:\n${setupRaw}\n\nBeats to write:\n${gistList}`, 0.7, sessionId);
   const prose = parseNumberedLines(writeRaw, beats.length);
 
   const lines = [];

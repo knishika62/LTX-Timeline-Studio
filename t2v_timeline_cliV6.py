@@ -680,7 +680,7 @@ async def _format_to_ltx_prompt(scene_desc: str, global_desc: str, ambience: str
     state: Pass0が決定した「このセグメント時点のSTATE」(時間帯/天気/服装)。参照文(global_desc)の
     既定値と矛盾する場合、こちらを優先させる(i2v_timeline_cliV2.pyでキーフレーム本文がglobal_descの
     既定の時間帯・照明をそのまま書いてしまう事故が実テストで発覚し、同じ修正を移植)。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     character_line = _trim_character_for_scale(character_line, direction)
     direction_constraint = (
         f"\n## Shot Director constraint (MUST match — do NOT change shot scale, camera motion, or movement direction)\n{direction}"
@@ -759,7 +759,7 @@ async def _lint_ltx_prompt(ltx_prompt: str, direction: str, action: str, orienta
     実データでC16(HAND BUDGET)が未解消のまま配信される事故が発覚(2026-07-10)。ユーザー提案
     「治るまでloopすれば」を受け、最大`_LINT_MAX_ATTEMPTS`回、毎回まだ残っている違反だけを
     次のfixerに渡して繰り返す(直った分は自然に外れ、fixerの負担が試行ごとに減っていく)。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     a = _ASPECT[orientation]
     a_forbidden = (
         'the words "landscape", "widescreen", "16:9"' if orientation == "vertical"

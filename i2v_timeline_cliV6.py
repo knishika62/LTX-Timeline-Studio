@@ -664,7 +664,7 @@ async def _extract_style_line(global_desc: str) -> str:
     従来は「desaturated natural light」等をハードコードしており、ユーザーのVisual Style指定
     (例: pastel coastal palette)を定数が上書きしていた(2026-07-05修正)。時刻依存の光描写を
     除外する修正は2026-07-06(上記コメント参照)。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     try:
         resp = await client.chat.completions.create(
             model=cfg.LLM_MODEL,
@@ -725,7 +725,7 @@ async def _format_keyframe_prompt(scene_desc: str, global_desc: str, duration: i
     既定値と矛盾する場合、こちらを優先させる(2026-07-06、キーフレーム本文がglobal_descの
     「Bright and cheerful in the morning」等をSTATE=夜のシーンでもそのまま書いてしまう事故が
     実テストで発覚したため追加)。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     character_line = _trim_character_for_scale(character_line, direction)
     a = _ASPECT[orientation]
     system = _KEYFRAME_FORMATTER_SYSTEM_BASE.format(label=a["label"], dims=a["dims"], compose=a["compose"], style_tail=style_tail)
@@ -975,7 +975,7 @@ async def _format_motion_prompt(scene_desc: str, ambience: str, duration: int, o
     """Pass 3b: 基準テキスト(Pass3の`ground_truth`)をI2V用の動きプロンプトに変換する
     (公式I2V原則: 静的要素は記述しない)。scene_desc引数名は維持しているが、実際に渡される
     のはKeyframe Formatter同様`ground_truth`(2026-07-08)。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     direction_constraint = (
         f"\n## Camera constraint (MUST match — camera motion and movement direction)\n{direction}"
         if direction else ""
@@ -1109,7 +1109,7 @@ async def _run_fixer(prompt: str, violated_rules: str, direction: str, action: s
                      fixer_system: str | None = None, min_len: int = 400) -> str | None:
     """違反ルール文だけをLLMに渡して最小修正させる(修正フェーズの共通部)。失敗時はNone。
     fixer_system: 省略時は汎用の_PROMPT_FIXER_SYSTEM。動きプロンプトは_MOTION_FIXER_SYSTEM(短文・メタ解説禁止)を渡す。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     a = _ASPECT[orientation]
     user_msg = (
         f"/no_think\n"

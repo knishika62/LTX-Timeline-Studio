@@ -54,7 +54,7 @@ async def expand_krea2_prompt(prompt: str) -> str:
     raw = (prompt or "").strip()
     if not raw:
         return prompt
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     try:
         resp = await client.chat.completions.create(
             model=cfg.LLM_MODEL,

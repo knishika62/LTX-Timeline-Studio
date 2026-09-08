@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 import os
+import uuid
 
 _BASE_DIR = Path(__file__).parent.parent  # modules/の1つ上=リポジトリ直下(2026-07-16、modules/移動時に対応)
 load_dotenv(_BASE_DIR / ".env")
@@ -18,6 +19,19 @@ def _get(key: str, default: str = "") -> str:
 LLM_BASE_URL: str = _get("LLM_BASE_URL", "http://localhost:1234/v1")
 LLM_MODEL: str = _get("LLM_MODEL", "Qwen3.6-35B-A3B-NVFP4")
 LLM_API_KEY: str = _get("LLM_API_KEY", "dummy")
+
+# opencode.ai "Go" プロバイダ(base_urlが https://opencode.ai/zen/go/v1 の時)専用の必須リクエスト
+# ヘッダー(2026-09、API仕様変更でx-opencode-session必須化: https://opencode.ai/docs/go/)。
+# 「会話ごとに固定のID」= このCLIプロセス1回の実行(Pass0〜4複数呼び出し)全体を1会話とみなし、
+# プロセス起動時に1つだけ発番して使い回す。他プロバイダでは何もしない(default_headers=Noneは
+# AsyncOpenAI側で無指定と同じ扱い)
+_LLM_SESSION_ID: str = str(uuid.uuid4())
+
+
+def llm_default_headers() -> dict[str, str] | None:
+    if not LLM_BASE_URL.startswith("https://opencode.ai/zen/go"):
+        return None
+    return {"x-opencode-session": _LLM_SESSION_ID, "User-Agent": "LTX-timeline/1.0"}
 
 COMFYUI_IMAGE_URL: str = _get("COMFYUI_IMAGE_URL", "http://localhost:8188")
 COMFYUI_VIDEO_URL: str = _get("COMFYUI_VIDEO_URL", "http://localhost:8188")

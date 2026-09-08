@@ -267,7 +267,7 @@ async def _auto_segment_narrative(text: str) -> str:
     タイムスタンプの加算はLLMに任せず、durationのみLLMに出させてPython側で計算する
     (このプロジェクト全体の「整形はPython、生成はLLM」という設計と一貫)。
     i2v/t2vで処理内容を変える理由が無いためsystem_promptは引数化せず内蔵する。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     resp = await client.chat.completions.create(
         model=cfg.LLM_MODEL,
         messages=[
@@ -1090,7 +1090,7 @@ async def _extract_character_line(global_desc: str) -> str:
     `_trim_character_for_scale`は衣装語(`_FOOTWEAR_ITEMS`/`_LOWER_BODY_ITEMS`)だけを
     見て要否を判定するため、胸のサイズの記述はfeetショットでは自動的に落ち、
     close-up/wideでは残る(追加の分岐は不要)。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     resp = await client.chat.completions.create(
         model=cfg.LLM_MODEL,
         messages=[
@@ -1510,7 +1510,7 @@ async def _plan_creative_intent_json(
 ) -> list[dict]:
     """Pass0(JSON版): _plan_creative_intentの自由記述版と対になる新経路。
     Creative Director/State Trackerどちらの呼び出しにも使う(system_promptで切替、旧版と同じ構造)。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     seg_list = "\n".join(
         f"{i}. ({seg['duration']}s) {seg['action']}"
         for i, seg in enumerate(segments, 1)
@@ -1531,7 +1531,7 @@ async def _plan_shot_directions_json(
     global_desc: str, segments: list[dict], orientation: str, intents: list[str], system_prompt: str,
 ) -> list[str]:
     """Pass1(JSON版): _plan_shot_directionsの自由記述版と対になる新経路。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     seg_list = "\n".join(
         f"{i}. ({seg['duration']}s) {seg['action']}"
         + (f"\n   Creative intent: {intent}" if intent else "")
@@ -1565,7 +1565,7 @@ async def _audit_shot_variety_json(
     directionが独立したJSONフィールドになるため、旧版が対処していた「actionタグの
     漏れ混入」(re.sub `^\\[[^\\]]*\\]\\s*`)は構造的に発生しなくなり不要。
     ただし「空/パース対象外のセグメントは監査前のdirectionを維持する」フォールバックは維持する。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     dir_list = "\n".join(
         f"{i}. action: {seg['action']} | current direction: {d}"
         for i, (seg, d) in enumerate(zip(segments, directions), 1)
@@ -1592,7 +1592,7 @@ async def _write_scene_description(
     system_prompt: str, intent: str = "", reserved_props: list[str] | None = None, retry_note: str = "",
 ) -> str:
     """Pass 2: カメラ方向と動作から、スクリーン上の空間的現実を記述する。"""
-    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY)
+    client = AsyncOpenAI(base_url=cfg.LLM_BASE_URL, api_key=cfg.LLM_API_KEY, default_headers=cfg.llm_default_headers())
     orient_note = "16:9 widescreen landscape (1280×720)" if orientation == "horizontal" else "9:16 vertical portrait (720×1280)"
     intent_block = (
         f"## Creative intent (what this shot must communicate — its STATE line is the authoritative "
