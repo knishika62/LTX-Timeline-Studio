@@ -710,7 +710,7 @@ def _format_h3_prompt(ltx_prompt: str, ambience: str, action: str = "") -> str:
     for quote in _ACTION_QUOTE_RE.findall(action):
         spoken = quote.strip('"')
         lang = "Japanese" if any(ord(ch) > 127 for ch in spoken) else "English"
-        text += f'\n<d>[{lang}] "{spoken}"</d>'
+        text += f"\n<d>[{lang}] {spoken}</d>"
     return text
 
 

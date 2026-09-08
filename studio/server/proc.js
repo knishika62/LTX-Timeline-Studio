@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { BASE_DIR, MAIN_PYTHON } from "./config.js";
+import { BASE_DIR, MAIN_PYTHON, PYTHON_ENV } from "./config.js";
 
 /** venv の python バイナリでスクリプトを起動する引数列を作る(-u で無バッファ化。
  * パイプ接続時の Python stdout はフルバッファリングされ、ログが「終了時に一括」に
@@ -31,7 +31,7 @@ export function streamCommand(cmd, args, { cwd = BASE_DIR, onLine, signal, detac
     // の Stop 処理を taskkill /T(PIDの親子関係でプロセスツリーを辿る、プロセスグループ不要)に
     // 切り替え済みのため、Windowsではdetachedそのものが不要かつ実害(別ウィンドウ)しかない。
     const win = process.platform === "win32";
-    const proc = spawn(cmd, args, { cwd, env: process.env, detached: win ? false : detached, windowsHide: true });
+    const proc = spawn(cmd, args, { cwd, env: PYTHON_ENV, detached: win ? false : detached, windowsHide: true });
     if (signal) signal.proc = proc;
     let buf = "";
     const feed = (chunk) => {
@@ -58,7 +58,7 @@ export function streamCommand(cmd, args, { cwd = BASE_DIR, onLine, signal, detac
 /** コマンドを実行して stdout を文字列で返す(非0終了は stderr 込みで reject)。 */
 export function runCommand(cmd, args, { cwd = BASE_DIR, stdin } = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { cwd, env: process.env, windowsHide: true });
+    const proc = spawn(cmd, args, { cwd, env: PYTHON_ENV, windowsHide: true });
     let out = "";
     let err = "";
     proc.stdout.on("data", (c) => (out += c));

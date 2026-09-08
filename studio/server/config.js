@@ -37,3 +37,23 @@ export function readEnv() {
     return {};
   }
 }
+
+// macOS: torchcodec(CASSの音声デコードで使用)は同梱していないffmpegバージョンと
+// bundled dylibのバージョンが一致しないと動かない(2026-08時点でHomebrewのffmpegが
+// 9系に上がり、torchcodec 0.14.0が対応する4〜8系のlibavutilと合わずロード失敗する事故が
+// 実機で発生)。`brew install ffmpeg@7`(またはtorchcodecが対応する4〜7いずれか)があれば
+// そのlibをDYLD_LIBRARY_PATHへ追加し、無ければ何もしない(既存動作のまま)。
+function pythonEnv() {
+  if (process.platform !== "darwin") return process.env;
+  const candidates = [
+    "/opt/homebrew/opt/ffmpeg@7/lib",
+    "/usr/local/opt/ffmpeg@7/lib",
+    "/opt/homebrew/opt/ffmpeg@6/lib",
+    "/usr/local/opt/ffmpeg@6/lib",
+  ];
+  const lib = candidates.find((p) => fs.existsSync(p));
+  if (!lib) return process.env;
+  const existing = process.env.DYLD_LIBRARY_PATH;
+  return { ...process.env, DYLD_LIBRARY_PATH: existing ? `${lib}:${existing}` : lib };
+}
+export const PYTHON_ENV = pythonEnv();

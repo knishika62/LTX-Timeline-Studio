@@ -4,6 +4,9 @@
 
 `git pull`後は`npm run studio:build`でフロントエンドを再ビルドすること(サーバー側JS/Pythonの修正はサーバー再起動のみで反映される)。
 
+### 2026-08-22
+- macOSでHomebrewの`ffmpeg`が新しすぎるとCASSの音声読み込みが`Could not load libtorchcodec`で失敗する問題に対応。`ffmpeg@7`等を検出しDYLD_LIBRARY_PATHへ自動追加するようstudioサーバー側を修正(詳細は「音源分離・BGM合成」節参照)
+
 ### 2026-08-21
 - 動画生成モデルをLTX-2.3からLTX-2.5へ移行(`video.json`のみ、性能向上のため2.3は廃止)。必要な重み(モデル)一覧を更新
 
@@ -166,6 +169,18 @@ venv\Scripts\python.exe -c "import torch; print(torch.__version__)"
 
 ```bash
 pip install -U torch==<別バージョン>
+```
+
+**macOSで音声読み込み時に`Could not load libtorchcodec`が出る場合**: Homebrewの`ffmpeg`が新しすぎ(torchcodecが対応するffmpeg 4〜8系のdylibが無い)ことが原因。torchcodecが対応するバージョンを追加インストールすれば共存できる(既存の`ffmpeg`を差し替える必要はない):
+
+```bash
+brew install ffmpeg@7
+```
+
+studio経由の実行はサーバー側(`studio/server/config.js`)が`ffmpeg@7`/`ffmpeg@6`のlibを自動検出しDYLD_LIBRARY_PATHへ追加するため、上記installだけで解消する。CLIから直接`separate.py`等を実行する場合は自分で環境変数を付ける:
+
+```bash
+DYLD_LIBRARY_PATH="$(brew --prefix ffmpeg@7)/lib" venv/bin/python CASS/separate.py --audio <file>
 ```
 
 ## ComfyUIの設定
